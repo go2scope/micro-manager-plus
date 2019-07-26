@@ -1,6 +1,6 @@
 """ Test example for g2sdataset module
 """
-import g2sdataset
+import dataset
 import argparse
 import cv2
 
@@ -24,7 +24,7 @@ if ds.num_channels() > 0 and ds.num_zslices() > 0 and ds.num_frames() > 0:
     # load image from the middle of the z stack, using first channel
     zpos = ds.num_zslices() // 2
     img = ds.image(0, zpos, 0)  # this is go2scope image
-    print('Image dimensions: ' + str(img.pixels.shape) + ', z=' + str(img.z))
+    print('Image dimensions: ' + str(img.shape) + ', z=' + str(img.z))
 
     # scale image for display to not exceed 800 X 800 box
     imsize = max(img.pixels.shape)

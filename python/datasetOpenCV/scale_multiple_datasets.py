@@ -13,7 +13,7 @@ args = parser.parse_args()
 dataset_names = os.listdir(args.source)
 for dir_name in dataset_names:
     if os.isdir(args.source + "/" + dir_name):
-        print('Scaling dataset: ' + dir_name)
+        print('Scaling datasetOpenCV: ' + dir_name)
         destination = args.source + "/" + dir_name + "-scaled" + "-" + args.scale
         g2sdataset.G2SDataset.rescale(args.source, destination, args.scale)
 

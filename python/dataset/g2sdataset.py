@@ -1,206 +1,225 @@
 # -*- coding: utf-8 -*-
 """ Go2Scope data set
 
-Module to suppord reading go2scope (micro-manager) multi-dimensional
+Module to support reading micro-manager multi-dimensional
 data sets.
 
 """
-
 import json
-import cv2
-from dataset import g2simage
 import os
-from shutil import copyfile
+import cv2
+import numpy as np
 
 
-class DatasetInfo:
-    """ dataset information """
+class SummaryMeta:
+    """
+    Summary metadata represents the entire data set
+    Assumed to be set before acquisition starts
+    """
+    # MANDATORY
+    # ---------
+    PREFIX = "Prefix"  # serves as a "name"
+    SOURCE = "Source"  # source application
 
-    def __init__(self):
-        self.frames = dict()
-        self.comment = ""
+    # Multi-D coordinate space (sparse)
+    # this represents intended coordinate space limits
+    # it is OK if some images are missing
+    CHANNELS = "Channels"
+    SLICES = "Slices"
+    FRAMES = "Frames"
+    POSITIONS = "Positions"
+    CHANNEL_NAMES = "ChNames"
+    CHANNEL_COLORS = "Colors"
 
-        self.zslices = 0
-        self.channel_names = []
-        self.channels = 0
-        self.timepoints = 0
+    STAGE_POSITIONS = "StagePositions"
 
-        self.pixel_size_um = 1.0
+    # image format
+    WIDTH = "WIDTH"
+    HEIGHT = "HEIGHT"
+    PIXEL_TYPE = "PixelType"
+    PIXEL_SIZE = "PixelSize_um"
+    BIT_DEPTH = "BitDepth"
+    PIXEL_ASPECT = "PixelAspect"
 
 
-class G2SDataset:
-    """ go2scope dataset 
+class ImageMeta:
+    WIDTH = "Width"
+    HEIGHT = "Height"
+    CHANNEL = "Channel"
+    CHANNEL_NAME = "Channel"  # ?? duplicate
+    FRAME = "Frame"  # what about FRAME_INDEX?
+    SLICE = "Slice"  # what about SLICE_INDEX?
+    CHANNEL_INDEX = "ChannelIndex"
+    SLICE_INDEX = "SliceIndex"
+    FRAME_INDEX = "FrameIndex"
+    POS_NAME = "PositionName"
+    POS_INDEX = "PositionIndex"
+    XUM = "XPositionUm"
+    YUM = "YPositionUm"
+    ZUM = "ZPositionUm"
+
+    FILE_NAME = "FileName"
+
+    ELAPSED_TIME_MS = "ElapsedTime-ms"
+
+
+class StagePositionMeta:
+    LABEL = "Label"
+    GRID_ROW = "GridRow"
+    GRID_COL = "GridCol"
+
+
+class Values:
+    PIX_TYPE_GRAY_32 = "GRAY32"
+    PIX_TYPE_GRAY_16 = "GRAY16"
+    PIX_TYPE_GRAY_8 = "GRAY8"
+    PIX_TYPE_RGB_32 = "RGB32"
+    PIX_TYPE_RGB_64 = "RGB64"
+
+
+class G2SPosDataset:
+    """ Micro-manager dataset
     
-        Represents a multi-dimensional image. In this version supports
-        three coordinates: channels, z-slices and timepoints.
+        Represents a multi-dimensional image.
+        Three coordinates: frame-channel-slice
         
     """
 
     # constants
     METADATA_FILE_NAME = 'metadata.txt'
-    COMMENTS_FILE_NAME = 'display_and_comments.txt'
     KEY_SUMMARY = 'Summary'
-    KEY_PIXEL_SIZE = "PixelSize_um"
-    KEY_CHANNEL_NAMES = "ChNames"
-    KEY_SLICES = "Slices"
-    KEY_FRAMES = "Frames"
-    KEY_CHANNELS = "Channels"
-    KEY_ZPOS = "ZPositionUm"
-    KEY_FILENAME = "FileName"
-    KEY_WIDTH = "Width"
-    KEY_HEIGHT = "Height"
-    KEY_COMMENTS = "Comments"
-
 
     def __init__(self):
         """ Constructor. Defines an empty data set. """
         self._path = ""
+        self._name = ""
         self._frames = dict()
-        self._comment = ""  # not populated for now
 
-        self._zslices = 0
+        self._z_slices = 0
         self._channel_names = []
-        self._timepoints = 0
+        self._frames = 0
+        self._positions = []
 
         self._pixel_size_um = 1.0
+        self._metadata = dict()
 
-    def load(self, dir_path, scale=1.0):
+    def load_meta(self, dir_path: str):
         """ Loads the entire data set, including images
-            
-            Args:
-                dir_path (str): dataset directory path
-                scale (float): scaling factor for images, default 1.0
         """
 
         self._path = dir_path
-        with open(self._path + '/' + G2SDataset.METADATA_FILE_NAME) as md_file:
-            md = json.load(md_file)
+        with open(os.path.join(self._path, G2SPosDataset.METADATA_FILE_NAME)) as md_file:
+            self._metadata = json.load(md_file)
 
-        with open(self._path + '/' + G2SDataset.COMMENTS_FILE_NAME) as comments_file:
-            comments_md = json.load(comments_file)
+        summary = self._metadata[G2SPosDataset.KEY_SUMMARY]
 
-        summary = md[G2SDataset.KEY_SUMMARY]
-        self._pixel_size_um = summary[G2SDataset.KEY_PIXEL_SIZE]
-        self._channel_names = summary[G2SDataset.KEY_CHANNEL_NAMES]
-        self._zslices = summary[G2SDataset.KEY_SLICES]
-        self._timepoints = summary[G2SDataset.KEY_FRAMES]
-        self._comment = comments_md[G2SDataset.KEY_COMMENTS][G2SDataset.KEY_SUMMARY]
-
-        # parse image frames
-        for key, subdict in md.items():
-            if key != G2SDataset.KEY_SUMMARY:
-                z = subdict[G2SDataset.KEY_ZPOS]
-                fname = self._path + '/' + subdict[G2SDataset.KEY_FILENAME]
-                cv2_image = cv2.imread(fname, -1)
-                if scale < 1.0:
-                    # reduce image size
-                    img = g2simage.G2SImage(cv2.resize(cv2_image, None, fx=float(scale), fy=float(scale),
-                                                       interpolation=cv2.INTER_CUBIC), z)
-                else:
-                    img = g2simage.G2SImage(cv2_image, z)
-
-                self._frames[key] = img
+        self._name = summary[SummaryMeta.PREFIX]
+        self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
+        self._channel_names = summary[SummaryMeta.CHANNEL_NAMES]
+        self._z_slices = summary[SummaryMeta.SLICES]
+        self._frames = summary[SummaryMeta.FRAMES]
+        self._positions = summary[SummaryMeta.POSITIONS]
 
     @staticmethod
-    def __frame_key(channel, zslice, timepoint):
+    def _frame_key(channel: int, z_slice: int, frame: int) -> str:
         """ Returns frame key string based on the three integer coordinates """
-        return "FrameKey" + "-" + str(timepoint) + "-" + str(channel) + "-" + str(zslice);
+        return "FrameKey" + "-" + str(frame) + "-" + str(channel) + "-" + str(z_slice)
 
-    @staticmethod
-    def get_info(dir_path):
-        """ Utility function that returns basic dataset information
-            without loading images. Might be useful for quickly scanning
-            multiple data sets.
-            
-            Args:
-                dir_path (str): dataset directory path
-                
-            Returns:
-                DatasetInfo: basic information
-        """
-        with open(dir_path + '/' + G2SDataset.METADATA_FILE_NAME) as md_file:
-            md = json.load(md_file)
+    def name(self):
+        return self._name
 
-        summary = md[G2SDataset.KEY_SUMMARY]
-        dsinf = DatasetInfo()
-        dsinf.pixelSizeUm = summary[G2SDataset.KEY_PIXEL_SIZE]
-        dsinf.channels = summary[G2SDataset.KEY_CHANNELS]
-        dsinf.zslices = summary[G2SDataset.KEY_SLICES]
-        dsinf.timepoints = summary[G2SDataset.KEY_FRAMES]
-        dsinf.channel_names = summary[G2SDataset.KEY_CHANNEL_NAMES]
-        return dsinf
+    def num_frames(self) -> int:
+        return self._frames
 
-    @staticmethod
-    def rescale(source, target, scale):
-        """ Rescale entire data set with correct metadata """
-        # create target directory
-        os.makedirs(target)
-
-        # copy metadata
-        copyfile(source + '/' + G2SDataset.METADATA_FILE_NAME, target + '/' + G2SDataset.METADATA_FILE_NAME)
-        copyfile(source + '/' + G2SDataset.COMMENTS_FILE_NAME, target + '/' + G2SDataset.COMMENTS_FILE_NAME)
-
-        # iterate on tif files, scale them and save to target
-        list_source = os.listdir(source)
-        newx = 0
-        newy = 0
-        for f in list_source:
-            if f.startswith('img_'):
-                imsrc = cv2.imread(source + '/' + f, -1)
-                imdest = cv2.resize(imsrc, None, fx=float(scale), fy=float(scale), interpolation=cv2.INTER_CUBIC)
-                cv2.imwrite(target + '/' + f, imdest)
-                newx = imdest.shape[0]
-                newy = imdest.shape[1]
-
-        # now fix metadata
-        md_file_name = target + '/' + G2SDataset.METADATA_FILE_NAME
-        md_file = open(md_file_name)
-        md = json.load(md_file)
-        md_file.close()
-        md[G2SDataset.KEY_SUMMARY][G2SDataset.KEY_WIDTH] = newx
-        md[G2SDataset.KEY_SUMMARY][G2SDataset.KEY_HEIGHT] = newy
-
-        # fix metadata for image frames
-        for key, subdict in md.items():
-            if key != G2SDataset.KEY_SUMMARY:
-                subdict[G2SDataset.KEY_WIDTH] = newx
-                subdict[G2SDataset.KEY_HEIGHT] = newy
-                frame_summary = subdict[G2SDataset.KEY_SUMMARY]
-                frame_summary[G2SDataset.KEY_WIDTH] = newx
-                frame_summary[G2SDataset.KEY_HEIGHT] = newy
-
-        # clear old file
-        os.remove(md_file_name)
-
-        # write new one
-        md_file = open(md_file_name, 'w')
-        json.dump(md, md_file, indent=4)
-        md_file.close()
-
-    def image(self, channel, zslice, timepoint):
-        """ Returns cv2 image at given coordinates.
-        
-            Args:
-                channel (int): channel index
-                zslice (int): slice index
-                timepoint (int): time index
-        
-        """
-
-        frkey = self.__frame_key(channel, zslice, timepoint)
-        return self._frames[frkey]
-
-    def num_frames(self):
-        return self._timepoints
-
-    def num_channels(self):
+    def num_channels(self) -> int:
         return len(self._channel_names)
 
-    def num_zslices(self):
-        return self._zslices
+    def num_z_slices(self) -> int:
+        return self._z_slices
 
-    def channel_names(self):
+    def channel_names(self) -> []:
         return self._channel_names
 
-    def pixel_size(self):
+    def pixel_size(self) -> float:
         return self._pixel_size_um
+
+    def summary_metadata(self) -> dict:
+        return self._metadata[G2SPosDataset.KEY_SUMMARY]
+
+    def image_metadata(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
+        ch_index = channel_index
+        if channel_name:
+            ch_index = self._channel_names.index(channel_name)
+
+        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or\
+                t_index not in range(0, self._frames):
+            raise Exception("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+
+        return self._metadata[G2SPosDataset._frame_key(ch_index, z_index, t_index)]
+
+    def image_pixels(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
+        ch_index = channel_index
+        if channel_name:
+            ch_index = self._channel_names.index(channel_name)
+
+        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or\
+                t_index not in range(0, self._frames):
+            raise Exception("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+
+        image_path = os.path.join(self._path, self._metadata[G2SPosDataset._frame_key(channel_index, z_index, t_index)]
+        [ImageMeta.FILE_NAME])
+        cv2_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        if cv2_image is None:
+            raise Exception("Invalid image reference: " + image_path)
+        return cv2_image
+
+
+class G2SDataset:
+    def __init__(self, path):
+        """ Constructor. Defines an empty data set. """
+        self._positions = []
+        self.load_meta(path)
+
+    def load_meta(self, dir_path: str):
+        """ Loads the metadata
+        """
+        self._positions = []  # reset contents
+
+        list_of_dirs = [name for name in os.listdir(dir_path) if os.path.isdir(os.path.join(dir_path, name))]
+        for pos_dir in list_of_dirs:
+            self._positions.append(G2SPosDataset().load_meta(pos_dir))
+
+        if not len(self._positions):
+            raise Exception("Micro-manager data set not identified in " + dir_path)
+
+    def name(self):
+        return self._positions[0].name()
+
+    def num_positions(self):
+        return len(self._positions)
+
+    def num_frames(self) -> int:
+        return self._positions[0].num_frames()
+
+    def num_channels(self) -> int:
+        return len(self._positions[0].num_channels())
+
+    def num_z_slices(self) -> int:
+        return self._positions[0].num_z_slices()
+
+    def channel_names(self) -> []:
+        return self._positions[0].channel_names()
+
+    def pixel_size(self) -> float:
+        return self._positions[0].pixel_size()
+
+    def summary_metadata(self) -> dict:
+        return self._positions[0].summary_metadata()
+
+    def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
+        return self._positions[position_index].image_metadata(channel_index, channel_name, z_index, t_index)
+
+    def image_pixels(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
+        return self._positions[position_index].image_pixels(channel_index, channel_name, z_index, t_index)
+
+

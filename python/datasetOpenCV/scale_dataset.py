@@ -1,4 +1,4 @@
-""" Rescale dataset
+""" Rescale datasetOpenCV
 """
 import g2sdataset
 import argparse
