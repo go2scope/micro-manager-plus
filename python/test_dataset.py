@@ -16,7 +16,7 @@ channel = 0
 
 if ds.num_channels() > 0 and ds.num_z_slices() > 0 and ds.num_frames() > 0:
 
-    img = ds.read_pixels(channel_index=0, z_index=0, t_index=0)
+    img = ds.image_pixels(channel_index=0, z_index=0, t_index=0)
     print('Image dimensions: ' + str(img.shape))
 
     # scale image for display to not exceed 800 X 800 box
