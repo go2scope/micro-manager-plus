@@ -1,10 +1,12 @@
 """ Test example for g2sdataset module
 """
-import dataset
+
 import argparse
 import cv2
 
 # parse command line arguments
+from datasetOpenCV import g2sdataset
+
 parser = argparse.ArgumentParser()
 parser.add_argument('path', help='directory path of the data set')
 parser.add_argument('-scale', help='scaling factor for images', type=float, default=1.0)
