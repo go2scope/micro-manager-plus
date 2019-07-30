@@ -7,8 +7,14 @@ data sets.
 """
 import json
 import os
+from json import JSONDecodeError
+
 import cv2
 import numpy as np
+
+
+class G2SDataError(Exception):
+    pass
 
 
 class SummaryMeta:
@@ -113,7 +119,14 @@ class G2SPosDatasetReader:
         """
 
         with open(os.path.join(self._path, G2SPosDatasetReader.METADATA_FILE_NAME)) as md_file:
-            self._metadata = json.load(md_file)
+            # there is a strange bug in some of the micro-manager datasets where closing "}" is
+            # missing, so we try to fix
+            mdstr = md_file.read()
+            try:
+                self._metadata = json.loads(mdstr)
+            except JSONDecodeError:
+                mdstr += '}'
+                self._metadata = json.loads(mdstr)
 
         summary = self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
 
@@ -173,7 +186,7 @@ class G2SPosDatasetReader:
             if fk.startswith("FrameKey"):
                 return int(self._metadata[fk][ImageMeta.POS_INDEX])
 
-        raise Exception("Position index not available in image metadata")
+        raise G2SDataError("Position index not available in image metadata")
 
     def summary_metadata(self) -> dict:
         return self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
@@ -185,7 +198,7 @@ class G2SPosDatasetReader:
 
         if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
-            raise Exception("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
         return self._metadata[G2SPosDatasetReader.get_frame_key(ch_index, z_index, t_index)]
 
@@ -196,14 +209,14 @@ class G2SPosDatasetReader:
 
         if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
-            raise Exception("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
         image_path = os.path.join(self._path,
                                   self._metadata[G2SPosDatasetReader.get_frame_key(channel_index, z_index, t_index)]
                                   [ImageMeta.FILE_NAME])
         cv2_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if cv2_image is None:
-            raise Exception("Invalid image reference: " + image_path)
+            raise G2SDataError("Invalid image reference: " + image_path)
         return cv2_image
 
 
@@ -229,7 +242,7 @@ class G2SDatasetReader:
             self._positions[pds.position_index()] = pds
 
         if not len(self._positions):
-            raise Exception("Micro-manager data set not identified in " + self._path)
+            raise G2SDataError("Micro-manager data set not identified in " + self._path)
         self._name = self._positions[0].name()
 
     def name(self):
@@ -313,7 +326,7 @@ class G2SPosDatasetWriter:
         # create a directory for the dataset
         pos_dir = os.path.join(self._path, self._name)
         if os.path.exists(pos_dir):
-            raise Exception("Can't create position directory, one already exists: " + pos_dir)
+            raise G2SDataError("Can't create position directory, one already exists: " + pos_dir)
         os.mkdir(pos_dir)
 
         self._positions = positions
@@ -340,7 +353,7 @@ class G2SPosDatasetWriter:
     def set_image_dimensions(self, width: int, height: int, pixel_type: Values):
         """Defines image parameters for the entire data set"""
         if self._width != 0 or self._height != 0 or self._pixel_type != Values.PIX_TYPE_NONE:
-            raise Exception("Dataset dimensions are already defined")
+            raise G2SDataError("Dataset dimensions are already defined")
         self._width = width
         self._height = height
         self._pixel_type = pixel_type
@@ -369,7 +382,7 @@ class G2SPosDatasetWriter:
         if len(self._channel_names) == len(channel_names):
             self._channel_names = channel_names
         else:
-            raise Exception("Channel names array size does not match existing data")
+            raise G2SDataError("Channel names array size does not match existing data")
 
     def add_image(self, pixels: np.array, position=0, channel=0, z_slice=0, frame=0, additional_meta=None):
         """
@@ -393,12 +406,12 @@ class G2SPosDatasetWriter:
             elif len(pixels.shape) == 2:
                 pixtype = Values.PIX_TYPE_GRAY_32
             else:
-                raise Exception("Unsupported number of components in np.array type: " + str(pixels.dtype))
+                raise G2SDataError("Unsupported number of components in np.array type: " + str(pixels.dtype))
         else:
-            raise Exception("Unsupported np.array type: " + str(pixels.dtype))
+            raise G2SDataError("Unsupported np.array type: " + str(pixels.dtype))
 
         if self._pixel_type != pixtype:
-            raise Exception("Pixel type does not match existing data")
+            raise G2SDataError("Pixel type does not match existing data")
 
         # image physical dimensions
         w = pixels.shape[0]
@@ -406,14 +419,14 @@ class G2SPosDatasetWriter:
 
         # check whether image is compatible
         if self._width != w or self._height != h:
-            raise Exception("Image dimensions do not match existing data")
+            raise G2SDataError("Image dimensions do not match existing data")
 
         # channel
         if channel not in range(len(self._channel_names)) or \
                 z_slice not in range(self._z_slices) or \
                 position not in range(self._positions) or \
                 frame not in range(self._frames):
-            raise Exception("Image coordinates are not valid")
+            raise G2SDataError("Image coordinates are not valid")
 
         # set default bit depth if not defined earlier
         if not self._bit_depth:
@@ -450,7 +463,7 @@ class G2SPosDatasetWriter:
         file_name = os.path.join(self._path, self._name, ("img_%9d_%s_%d.tif" % (frame, self._channel_names[channel],
                                                                                  z_slice)))
         if not cv2.imwrite(file_name, pixels):
-            raise Exception("Image write failed: " + file_name)
+            raise G2SDataError("Image write failed: " + file_name)
 
     def _get_summary_meta(self):
         summary = {

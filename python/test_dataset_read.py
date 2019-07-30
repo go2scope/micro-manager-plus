@@ -1,5 +1,6 @@
 import argparse
 from dataset import g2sdataset
+import json
 
 # parse command line arguments
 parser = argparse.ArgumentParser()
@@ -18,11 +19,22 @@ print(
 print("Channel names: " + str(ds.channel_names()))
 print("Position labels: " + str(ds.position_labels()))
 
+print("Summary metadata:")
+print(json.dumps(ds.summary_metadata(), indent=4))
+
+print("\nImage list:")
 for p in range(ds.num_positions()):
     print("\nPosition: " + ds.position_labels()[p])
     for c in range(ds.num_channels()):
         for s in range(ds.num_z_slices()):
             for f in range(ds.num_frames()):
-                print("Image(c=%d, s=%d, f=%d): %s" % (c, s, f, ds.image_metadata(position_index=p, channel_index=c,
-                                                                                  z_index=s, t_index=f)[
-                    g2sdataset.ImageMeta.FILE_NAME]))
+                try:
+                    # get pixels
+                    img = ds.image_pixels(position_index=p, channel_index=c, z_index=s, t_index=f)
+                    # get meta
+                    img_meta = ds.image_metadata(position_index=p, channel_index=c, z_index=s, t_index=f)
+
+                    print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[g2sdataset.ImageMeta.FILE_NAME],
+                                                                        img.dtype.name, img.shape[0], img.shape[1]))
+                except Exception as err:
+                    print("Image(c=%d, s=%d, f=%d) is not available")
