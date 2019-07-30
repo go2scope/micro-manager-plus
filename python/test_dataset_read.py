@@ -1,8 +1,10 @@
 import argparse
-from dataset import g2sdataset
+from dataio import g2sdataset
 import json
 
 # parse command line arguments
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('path', help='directory path of the data set')
 args = parser.parse_args()
@@ -10,7 +12,7 @@ args = parser.parse_args()
 # load data set and print basic info
 ds = g2sdataset.G2SDatasetReader(args.path)
 
-print("Loaded dataset: " + args.path)
+print("Loaded dataio: " + args.path)
 print(
     "Positions: %d, Channels: %d, Slices: %d, Frames: %d, Image: %d X %d X %s" % (ds.num_positions(), ds.num_channels(),
                                                                                   ds.num_z_slices(), ds.num_frames(),
@@ -36,5 +38,5 @@ for p in range(ds.num_positions()):
 
                     print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[g2sdataset.ImageMeta.FILE_NAME],
                                                                         img.dtype.name, img.shape[0], img.shape[1]))
-                except Exception as err:
+                except G2SDataError as err:
                     print("Image(c=%d, s=%d, f=%d) is not available")

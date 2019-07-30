@@ -85,7 +85,7 @@ class Values:
 
 
 class G2SPosDatasetReader:
-    """ Micro-manager dataset
+    """ Micro-manager dataio
     
         Represents a multi-dimensional image.
         Three coordinates: frame-channel-slice
@@ -178,7 +178,7 @@ class G2SPosDatasetReader:
 
     def position_index(self) -> int:
         """
-        Returns position index of the positional sub-dataset.
+        Returns position index of the positional sub-dataio.
         This information is stored only in image meta, so we have to search through image metadata
         until we find first one. Search is necessary because particular coordinates are not guaranteed to be available
         """
@@ -323,7 +323,7 @@ class G2SPosDatasetWriter:
         self._path = root_path
         self._name = name
 
-        # create a directory for the dataset
+        # create a directory for the dataio
         pos_dir = os.path.join(self._path, self._name)
         if os.path.exists(pos_dir):
             raise G2SDataError("Can't create position directory, one already exists: " + pos_dir)
