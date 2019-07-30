@@ -1,5 +1,7 @@
 import argparse
+
 from dataio import g2sdataset
+from dataio.g2sdataset import G2SDatasetReader, G2SDataError
 import json
 
 # parse command line arguments
@@ -10,7 +12,7 @@ parser.add_argument('path', help='directory path of the data set')
 args = parser.parse_args()
 
 # load data set and print basic info
-ds = g2sdataset.G2SDatasetReader(args.path)
+ds = G2SDatasetReader(args.path)
 
 print("Loaded dataio: " + args.path)
 print(
