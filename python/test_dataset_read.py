@@ -41,4 +41,8 @@ for p in range(ds.num_positions()):
                     print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[g2sdataset.ImageMeta.FILE_NAME],
                                                                         img.dtype.name, img.shape[0], img.shape[1]))
                 except G2SDataError as err:
-                    print("Image(c=%d, s=%d, f=%d) is not available")
+                    print("Image(p=%d, c=%d, s=%d, f=%d) is not available: %s" % (p, c, s, f, err.__str__()))
+                except KeyError as err:
+                    print(
+                        'Image(p=%d c=%d, s=%d, f=%d) coordinates not available in metadata: %s. Dataset incomplete.' %
+                        (p, c, s, f, err.__str__()))

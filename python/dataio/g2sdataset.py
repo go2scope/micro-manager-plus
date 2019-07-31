@@ -186,27 +186,35 @@ class G2SPosDatasetReader:
             if fk.startswith("FrameKey"):
                 return int(self._metadata[fk][ImageMeta.POS_INDEX])
 
-        raise G2SDataError("Position index not available in image metadata")
+        raise G2SDataError("Position index not available in image metadata.")
 
     def summary_metadata(self) -> dict:
         return self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
 
-    def image_metadata(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        ch_index = channel_index
-        if channel_name:
-            ch_index = self._channel_names.index(channel_name)
+    def _get_channel_index(self, cindex: int, cname: str) -> int:
+        if cname:
+            try:
+                return self._channel_names.index(cname)
+            except Exception:
+                raise G2SDataError("Invalid channel name: " + cname)
+        else:
+            return cindex
 
+    def image_metadata(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
+        ch_index = self._get_channel_index(channel_index, channel_name)
         if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
-        return self._metadata[G2SPosDatasetReader.get_frame_key(ch_index, z_index, t_index)]
+        try:
+            md = self._metadata[G2SPosDatasetReader.get_frame_key(ch_index, z_index, t_index)]
+        except Exception as err:
+            raise G2SDataError("Frame key not available in metadata: " + err.__str__())
+
+        return md
 
     def image_pixels(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        ch_index = channel_index
-        if channel_name:
-            ch_index = self._channel_names.index(channel_name)
-
+        ch_index = self._get_channel_index(channel_index, channel_name)
         if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
