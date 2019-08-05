@@ -220,8 +220,7 @@ class G2SPosDatasetReader:
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
         image_path = os.path.join(self._path,
-                                  self._metadata[G2SPosDatasetReader.get_frame_key(channel_index, z_index, t_index)]
-                                  [ImageMeta.FILE_NAME])
+                                  self._metadata[G2SPosDatasetReader.get_frame_key(channel_index, z_index, t_index)][ImageMeta.FILE_NAME])
         cv2_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if cv2_image is None:
             raise G2SDataError("Invalid image reference: " + image_path)

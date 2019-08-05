@@ -1,7 +1,7 @@
 import argparse
 
-from dataio import g2sdataset
-from dataio.g2sdataset import G2SDatasetReader, G2SDataError
+from dataio.g2sdataset import G2SDatasetReader, G2SDataError, ImageMeta
+
 import json
 
 # parse command line arguments
@@ -38,7 +38,7 @@ for p in range(ds.num_positions()):
                     # get meta
                     img_meta = ds.image_metadata(position_index=p, channel_index=c, z_index=s, t_index=f)
 
-                    print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[g2sdataset.ImageMeta.FILE_NAME],
+                    print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[ImageMeta.FILE_NAME],
                                                                         img.dtype.name, img.shape[0], img.shape[1]))
                 except G2SDataError as err:
                     print("Image(p=%d, c=%d, s=%d, f=%d) is not available: %s" % (p, c, s, f, err.__str__()))

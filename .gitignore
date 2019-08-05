@@ -2,3 +2,9 @@ python/.idea/
 python/dataset/__pycache__/
 python/venv/
 python/dataio/__pycache__/
+python/v-env/
+.idea/
+v-env/
+python/dataio/g2sdataset/__pycache__/
+python/dataio/test/aws_config.py
+*.pyc
