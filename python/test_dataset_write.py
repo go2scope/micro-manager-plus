@@ -1,18 +1,15 @@
 import argparse
-
-import dataio.g2sdataset
-
+from dataio import g2sdataset
+from dataio.g2sdataset import G2SDatasetWriter, G2SDataError
 import json
 
 # parse command line arguments
-
-
 parser = argparse.ArgumentParser()
-parser.add_argument('path', help='directory path of the data set')
+parser.add_argument('path', help='directory path of the new data set')
 args = parser.parse_args()
 
-# load data set and print basic info
-ds = dataio.g2sdataset.G2SDatasetReader(args.path)
+# create new dataset
+ds = G2SDatasetWriter(args.path)
 
 print("Loaded dataio: " + args.path)
 print(
@@ -38,9 +35,9 @@ for p in range(ds.num_positions()):
                     # get meta
                     img_meta = ds.image_metadata(position_index=p, channel_index=c, z_index=s, t_index=f)
 
-                    print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[dataio.g2sdataset.ImageMeta.FILE_NAME],
+                    print("Image(c=%d, s=%d, f=%d): %s, %s, %d X %d" % (c, s, f, img_meta[g2sdataset.ImageMeta.FILE_NAME],
                                                                         img.dtype.name, img.shape[0], img.shape[1]))
-                except dataio.g2sdataset.G2SDataError as err:
+                except G2SDataError as err:
                     print("Image(p=%d, c=%d, s=%d, f=%d) is not available: %s" % (p, c, s, f, err.__str__()))
                 except KeyError as err:
                     print(

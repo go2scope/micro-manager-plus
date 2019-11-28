@@ -131,7 +131,8 @@ class G2SPosDatasetReader:
         summary = self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
 
         self._name = summary[SummaryMeta.PREFIX]
-        self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
+        if SummaryMeta.PIXEL_SIZE in summary.keys():
+            self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
         self._channel_names = summary[SummaryMeta.CHANNEL_NAMES]
         self._z_slices = summary[SummaryMeta.SLICES]
         self._frames = summary[SummaryMeta.FRAMES]
@@ -139,7 +140,8 @@ class G2SPosDatasetReader:
         self._width = summary[SummaryMeta.WIDTH]
         self._height = summary[SummaryMeta.HEIGHT]
         self._pixel_type = summary[SummaryMeta.PIXEL_TYPE]
-        self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
+        if SummaryMeta.BIT_DEPTH in summary.keys():
+            self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
 
     @staticmethod
     def get_frame_key(channel: int, z_slice: int, frame: int) -> str:
