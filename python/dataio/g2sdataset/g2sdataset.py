@@ -7,6 +7,7 @@ data sets.
 """
 import json
 import os
+import shutil
 from json import JSONDecodeError
 
 import cv2
@@ -85,11 +86,10 @@ class Values:
 
 
 class G2SPosDatasetReader:
-    """ Micro-manager dataio
+    """ Micro-manager file reader
     
-        Represents a multi-dimensional image.
+        Represents a multi-dimensional image at a single location.
         Three coordinates: frame-channel-slice
-        
     """
 
     # constants
@@ -130,7 +130,12 @@ class G2SPosDatasetReader:
 
         summary = self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
 
-        self._name = summary[SummaryMeta.PREFIX]
+        if SummaryMeta.PREFIX in summary.keys():
+            self._name = summary[SummaryMeta.PREFIX]
+        else:
+            # figure out the name based on the path
+            self._name = os.path.basename(self._path)
+
         if SummaryMeta.PIXEL_SIZE in summary.keys():
             self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
         self._channel_names = summary[SummaryMeta.CHANNEL_NAMES]
@@ -180,7 +185,7 @@ class G2SPosDatasetReader:
 
     def position_index(self) -> int:
         """
-        Returns position index of the positional sub-dataio.
+        Returns position index of the positional sub-dataset.
         This information is stored only in image meta, so we have to search through image metadata
         until we find first one. Search is necessary because particular coordinates are not guaranteed to be available
         """
@@ -231,8 +236,8 @@ class G2SPosDatasetReader:
 
 class G2SDatasetReader:
     def __init__(self, path: str):
-        """ Constructor. Defines an empty data set.
-            Alternatively it can load data set right away if the path is supplied
+        """ 
+        Defines and loads the data set with four coordinates position-channel-slice-frame
         """
         self._positions = []
         self._path = path
@@ -240,8 +245,7 @@ class G2SDatasetReader:
         self._load_meta()
 
     def _load_meta(self):
-        """ Loads the metadata
-        """
+        """ Loads the metadata """
         self._positions = []  # reset contents
 
         list_of_dirs = [name for name in os.listdir(self._path) if os.path.isdir(os.path.join(self._path, name))]
@@ -252,7 +256,7 @@ class G2SDatasetReader:
 
         if not len(self._positions):
             raise G2SDataError("Micro-manager data set not identified in " + self._path)
-        self._name = self._positions[0].name()
+        self._name = os.path.basename(self._path)
 
     def name(self):
         return self._name
@@ -304,6 +308,9 @@ class G2SDatasetReader:
 
 
 class G2SPosDatasetWriter:
+    """
+    Micro-manager file format writer
+    """
     # constants
     METADATA_FILE_NAME = 'metadata.txt'
     KEY_SUMMARY = 'Summary'
@@ -326,13 +333,18 @@ class G2SPosDatasetWriter:
         self._pixel_size_um = 1.0
         self._summary_meta = {}
         self._meta = {}
+        self._additional_summary_meta = {}
 
-    def create(self, root_path: str, name: str, positions=0, channels=0, z_slices=0, frames=0):
+    def create(self, root_path: str, name: str, positions=0, channels=0, z_slices=0, frames=0, additional_meta=None):
         """ Create new data set with specified dimensions"""
+        if additional_meta is None:
+            additional_meta = {}
         self._path = root_path
         self._name = name
+        if additional_meta:
+            self._additional_summary_meta = additional_meta
 
-        # create a directory for the dataio
+        # create a directory for the data
         pos_dir = os.path.join(self._path, self._name)
         if os.path.exists(pos_dir):
             raise G2SDataError("Can't create position directory, one already exists: " + pos_dir)
@@ -348,16 +360,20 @@ class G2SPosDatasetWriter:
 
     def close(self):
         """ Close data set and write metadata"""
-        file_name = os.path.join(self._path, self._name, G2SPosDatasetWriter.METADATA_FILE_NAME)
-        with open(file_name, 'w') as fp:
-            json_string = json.dumps(self._meta, indent=4)
-            fp.write(json_string)
+        self.save_metadata()
 
         # this makes writer invalid for further use
         self._meta = None
         self._summary_meta = None
         self._path = None
         self._name = None
+
+    def save_metadata(self):
+        """ Saves metadata. This can be used to occasionally save metadata to disk"""
+        file_name = os.path.join(self._path, self._name, G2SPosDatasetWriter.METADATA_FILE_NAME)
+        with open(file_name, 'w') as fp:
+            json_string = json.dumps(self._meta, indent=4)
+            fp.write(json_string)
 
     def set_image_dimensions(self, width: int, height: int, pixel_type: Values):
         """Defines image parameters for the entire data set"""
@@ -445,7 +461,7 @@ class G2SPosDatasetWriter:
                 self._bit_depth = 8
 
         if not self._summary_meta:
-            self._summary_meta = self._get_summary_meta()
+            self._summary_meta = self._create_summary_meta()
             self._meta[G2SPosDatasetWriter.KEY_SUMMARY] = self._summary_meta
 
         if additional_meta:
@@ -474,22 +490,22 @@ class G2SPosDatasetWriter:
         if not cv2.imwrite(file_name, pixels):
             raise G2SDataError("Image write failed: " + file_name)
 
-    def _get_summary_meta(self):
-        summary = {
-            SummaryMeta.PREFIX: self._name,
-            SummaryMeta.SOURCE: G2SPosDatasetWriter.KEY_SOURCE,
-            SummaryMeta.WIDTH: self._width,
-            SummaryMeta.HEIGHT: self._height,
-            SummaryMeta.PIXEL_TYPE: self._pixel_type,
-            SummaryMeta.PIXEL_SIZE: self._pixel_size_um,
-            SummaryMeta.BIT_DEPTH: self._bit_depth,
-            SummaryMeta.PIXEL_ASPECT: 1,
-            SummaryMeta.POSITIONS: self._positions,
-            SummaryMeta.CHANNELS: len(self._channel_names),
-            SummaryMeta.CHANNEL_NAMES: self._channel_names,
-            SummaryMeta.SLICES: self._z_slices,
-            SummaryMeta.FRAMES: self._frames
-        }
+    def _create_summary_meta(self):
+        summary = self._additional_summary_meta
+        summary[SummaryMeta.PREFIX] = self._name
+        summary[SummaryMeta.SOURCE] = G2SPosDatasetWriter.KEY_SOURCE
+        summary[SummaryMeta.WIDTH] = self._width
+        summary[SummaryMeta.HEIGHT] = self._height
+        summary[SummaryMeta.PIXEL_TYPE] = self._pixel_type
+        summary[SummaryMeta.PIXEL_SIZE] = self._pixel_size_um
+        summary[SummaryMeta.BIT_DEPTH] = self._bit_depth
+        summary[SummaryMeta.PIXEL_ASPECT] = 1
+        summary[SummaryMeta.POSITIONS] = self._positions
+        summary[SummaryMeta.CHANNELS] = len(self._channel_names)
+        summary[SummaryMeta.CHANNEL_NAMES] = self._channel_names
+        summary[SummaryMeta.SLICES] = self._z_slices
+        summary[SummaryMeta.FRAMES] = self._frames
+
         return summary
 
 
@@ -501,11 +517,93 @@ class G2SDatasetWriter:
         self._positions = []
         self._root_path = ""
         self._name = ""
+        self._channels = 0
+        self._positions = []
+        self._z_slices = 0
+        self._frames = 0
+        self._additional_summary_meta = {}
 
     def _empty(self) -> bool:
         return len(self._positions) == 0
 
-    def create(self, root_path: str, name: str):
-        self._positions = []
+    def create(self, root_path: str, name: str, positions=1, channels=1, z_slices=1, frames=1, overwrite=False, additional_meta=None):
+        """
+        Create new data set
+        :param root_path:
+        :param name:
+        :param overwrite: deletes existing datasets with the same name
+        :return:
+        """
+        self._positions = [None] * positions
         self._root_path = root_path
         self._name = name
+        self._channels = channels
+        self._z_slices = z_slices
+        self._frames = frames
+        self._additional_summary_meta = {}
+        if additional_meta:
+            self._additional_summary_meta = additional_meta
+
+        ds_dir = os.path.join(root_path, name)
+        if overwrite:
+            # we are instructed to overwrite existing datasets in the same path
+            if os.path.exists(ds_dir):
+                # before deleting data we do a few checks to make sure we are overwriting another dataset
+                # if it doesn't look like a dataset, we refuse to overwrite
+                if not os.path.isdir(ds_dir):
+                    raise G2SDataError("We can't overwrite non-directory path: " + ds_dir)
+                list_of_dirs = [name for name in os.listdir(ds_dir)]
+                if not len(list_of_dirs):
+                    raise G2SDataError("Doesn't look like dataset path so we can't overwrite: " + ds_dir)
+                if os.path.exists(os.path.join(ds_dir, list_of_dirs[0], "metadata.txt")):
+                    raise G2SDataError("Can't find metadata.txt, so we can't overwrite: " + ds_dir)
+
+                # this dumps the entire tree
+                shutil.rmtree(ds_dir, ignore_errors=True)
+        else:
+            if os.path.exists(ds_dir):
+                raise G2SDataError("Directory already exists: " + ds_dir)
+
+        os.mkdir(ds_dir)  # create directory for the data set
+
+    def add_image(self, pixels: np.array, position=0, position_name="", channel=0, z_slice=0, frame=0, additional_meta=None):
+        """
+        Writes an image with specified coordinates
+        :param position_name: name of the position
+        :param pixels: nd.array representing image pixels, must match pixel type
+        :param position: position coordinate
+        :param channel: channel coordinate
+        :param z_slice: slice coordinate
+        :param frame: frame coordinate
+        :param additional_meta: additional image metadata as dictionary
+        """
+        if not self._positions[position]:
+            # create a positional data set
+            pos_ds = G2SPosDatasetWriter()
+            pos_name = "Pos_" + str(position)
+            if position_name:
+                pos_name = position_name
+
+            pos_ds.create(os.path.join(self._root_path, self._name), pos_name, len(self._positions), self._channels,
+                          self._z_slices, self._frames)
+            self._positions[position] = pos_ds
+        else:
+            pos_ds = self._positions[position]
+            if position_name:
+                if pos_ds.name() != position_name:
+                    raise G2SDataError("Position name does not mach existing one: " + position_name)
+
+        # finally add image
+        pos_ds.add_image(pixels, position=position, channel=channel, z_slice=z_slice, frame=frame,
+                         additional_meta=additional_meta)
+
+    def close(self):
+        """ closes entire data set and saves all metadata """
+        for pos in self._positions:
+            if pos:
+                pos.close()
+
+        # this makes writer invalid for further use
+        self._root_path = None
+        self._name = None
+
