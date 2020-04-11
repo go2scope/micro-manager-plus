@@ -3,15 +3,14 @@ from json import JSONDecodeError
 import cv2
 import numpy as np
 
-from dataio.g2sdataset import G2SDatasetReader
-from dataio.g2sdataset.g2sdataset import G2SPosDatasetReader
-from dataio.g2sdataset.g2sdataset import SummaryMeta
-from dataio.g2sdataset.g2sdataset import G2SDataError
-from dataio.g2sdataset.g2sdataset import ImageMeta
+from dataio.g2sdataset.reader import PosDatasetReader, DatasetReader
+from dataio.g2sdataset.dataset import SummaryMeta
+from dataio.g2sdataset.dataset import G2SDataError
+from dataio.g2sdataset.dataset import ImageMeta
 from awslp.awslp import S3Bucket
 
 
-class G2SDatasetReaderS3(G2SDatasetReader):
+class S3DatasetReader(DatasetReader):
 
     def __init__(self,
                  path: str,
@@ -73,7 +72,7 @@ class G2SDatasetReaderS3(G2SDatasetReader):
         self._name = self._positions[0].name()
 
 
-class G2SPosDatasetReaderS3(G2SPosDatasetReader):
+class G2SPosDatasetReaderS3(PosDatasetReader):
 
     def __init__(self, path: str, s3_bucket: S3Bucket) -> None:
         """ Constructor.
@@ -86,7 +85,7 @@ class G2SPosDatasetReaderS3(G2SPosDatasetReader):
     def _load_meta(self) -> None:
         """ Loads the entire data set, including images
         """
-        md_str = self._s3_bucket.get_file_content(self._path + '/' + G2SPosDatasetReader.METADATA_FILE_NAME)
+        md_str = self._s3_bucket.get_file_content(self._path + '/' + PosDatasetReader.METADATA_FILE_NAME)
         # there is a strange bug in some of the micro-manager datasets where closing "}" is
         # missing, so we try to fix
         try:
@@ -94,7 +93,7 @@ class G2SPosDatasetReaderS3(G2SPosDatasetReader):
         except JSONDecodeError:
             md_str += '}'
             self._metadata = json.loads(md_str)
-        summary = self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
+        summary = self._metadata[PosDatasetReader.KEY_SUMMARY]
 
         self._name = summary[SummaryMeta.PREFIX]
         self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
@@ -120,7 +119,7 @@ class G2SPosDatasetReaderS3(G2SPosDatasetReader):
                 t_index not in range(0, self._frames):
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
-        image_path = self._path + '/' + self._metadata[G2SPosDatasetReader.get_frame_key(channel_index, z_index, t_index)][ImageMeta.FILE_NAME]
+        image_path = self._path + '/' + self._metadata[PosDatasetReader.get_frame_key(channel_index, z_index, t_index)][ImageMeta.FILE_NAME]
         data = self._s3_bucket.get_file_object(image_path)
         image_pixel_type = self.pixel_type()
 

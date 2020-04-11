@@ -8,306 +8,15 @@ data sets.
 import json
 import os
 import shutil
-from json import JSONDecodeError
 
 import cv2
 import numpy as np
 
+from dataio.g2sdataset.dataset import Values, G2SDataError, ImageMeta, SummaryMeta
+from dataio.g2sdataset.reader import PosDatasetReader
 
-class G2SDataError(Exception):
-    pass
 
-
-class SummaryMeta:
-    """
-    Summary metadata represents the entire data set
-    Assumed to be set before acquisition starts
-    """
-    # MANDATORY
-    # ---------
-    PREFIX = "Prefix"  # serves as a "name"
-    SOURCE = "Source"  # source application
-
-    # Multi-D coordinate space (sparse)
-    # this represents intended coordinate space limits
-    # it is OK if some images are missing
-    CHANNELS = "Channels"
-    SLICES = "Slices"
-    FRAMES = "Frames"
-    POSITIONS = "Positions"
-    CHANNEL_NAMES = "ChNames"
-    CHANNEL_COLORS = "Colors"
-
-    STAGE_POSITIONS = "StagePositions"
-
-    # image format
-    WIDTH = "Width"
-    HEIGHT = "Height"
-    PIXEL_TYPE = "PixelType"
-    PIXEL_SIZE = "PixelSize_um"
-    BIT_DEPTH = "BitDepth"
-    PIXEL_ASPECT = "PixelAspect"
-
-
-class ImageMeta:
-    WIDTH = "Width"
-    HEIGHT = "Height"
-    CHANNEL = "Channel"
-    CHANNEL_NAME = "Channel"  # ?? duplicate
-    FRAME = "Frame"  # what about FRAME_INDEX?
-    SLICE = "Slice"  # what about SLICE_INDEX?
-    CHANNEL_INDEX = "ChannelIndex"
-    SLICE_INDEX = "SliceIndex"
-    FRAME_INDEX = "FrameIndex"
-    POS_NAME = "PositionName"
-    POS_INDEX = "PositionIndex"
-    XUM = "XPositionUm"
-    YUM = "YPositionUm"
-    ZUM = "ZPositionUm"
-
-    FILE_NAME = "FileName"
-
-    ELAPSED_TIME_MS = "ElapsedTime-ms"
-
-
-class StagePositionMeta:
-    LABEL = "Label"
-    GRID_ROW = "GridRow"
-    GRID_COL = "GridCol"
-
-
-class Values:
-    PIX_TYPE_NONE = "NONE"
-    PIX_TYPE_GRAY_32 = "GRAY32"
-    PIX_TYPE_GRAY_16 = "GRAY16"
-    PIX_TYPE_GRAY_8 = "GRAY8"
-    PIX_TYPE_RGB_32 = "RGB32"
-    PIX_TYPE_RGB_64 = "RGB64"
-
-
-class G2SPosDatasetReader:
-    """ Micro-manager file reader
-    
-        Represents a multi-dimensional image at a single location.
-        Three coordinates: frame-channel-slice
-    """
-
-    # constants
-    METADATA_FILE_NAME = 'metadata.txt'
-    KEY_SUMMARY = 'Summary'
-
-    def __init__(self, path):
-        """ Constructor. Defines an empty data set. """
-        self._path = path
-        self._name = ""
-
-        self._z_slices = 0
-        self._channel_names = []
-        self._frames = 0
-        self._positions = []
-        self._width = 0
-        self._height = 0
-        self._pixel_type = Values.PIX_TYPE_NONE
-        self._bit_depth = 0
-
-        self._pixel_size_um = 1.0
-        self._metadata = dict()
-        self._load_meta()
-
-    def _load_meta(self):
-        """ Loads the entire data set, including images
-        """
-
-        with open(os.path.join(self._path, G2SPosDatasetReader.METADATA_FILE_NAME)) as md_file:
-            # there is a strange bug in some of the micro-manager datasets where closing "}" is
-            # missing, so we try to fix
-            mdstr = md_file.read()
-            try:
-                self._metadata = json.loads(mdstr)
-            except JSONDecodeError:
-                mdstr += '}'
-                self._metadata = json.loads(mdstr)
-
-        summary = self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
-
-        if SummaryMeta.PREFIX in summary.keys():
-            self._name = summary[SummaryMeta.PREFIX]
-        else:
-            # figure out the name based on the path
-            self._name = os.path.basename(self._path)
-
-        if SummaryMeta.PIXEL_SIZE in summary.keys():
-            self._pixel_size_um = summary[SummaryMeta.PIXEL_SIZE]
-        self._channel_names = summary[SummaryMeta.CHANNEL_NAMES]
-        self._z_slices = summary[SummaryMeta.SLICES]
-        self._frames = summary[SummaryMeta.FRAMES]
-        self._positions = summary[SummaryMeta.POSITIONS]
-        self._width = summary[SummaryMeta.WIDTH]
-        self._height = summary[SummaryMeta.HEIGHT]
-        self._pixel_type = summary[SummaryMeta.PIXEL_TYPE]
-        if SummaryMeta.BIT_DEPTH in summary.keys():
-            self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
-
-    @staticmethod
-    def get_frame_key(channel: int, z_slice: int, frame: int) -> str:
-        """ Returns frame key string based on the three integer coordinates """
-        return "FrameKey" + "-" + str(frame) + "-" + str(channel) + "-" + str(z_slice)
-
-    def name(self):
-        return self._name
-
-    def width(self):
-        return self._width
-
-    def height(self):
-        return self._height
-
-    def pixel_type(self):
-        return self._pixel_type
-
-    def bit_depth(self):
-        return self._bit_depth
-
-    def num_frames(self) -> int:
-        return self._frames
-
-    def num_channels(self) -> int:
-        return len(self._channel_names)
-
-    def num_z_slices(self) -> int:
-        return self._z_slices
-
-    def channel_names(self) -> []:
-        return self._channel_names
-
-    def pixel_size(self) -> float:
-        return self._pixel_size_um
-
-    def position_index(self) -> int:
-        """
-        Returns position index of the positional sub-dataset.
-        This information is stored only in image meta, so we have to search through image metadata
-        until we find first one. Search is necessary because particular coordinates are not guaranteed to be available
-        """
-        for fk in self._metadata.keys():
-            if fk.startswith("FrameKey"):
-                return int(self._metadata[fk][ImageMeta.POS_INDEX])
-
-        raise G2SDataError("Position index not available in image metadata.")
-
-    def summary_metadata(self) -> dict:
-        return self._metadata[G2SPosDatasetReader.KEY_SUMMARY]
-
-    def _get_channel_index(self, cindex: int, cname: str) -> int:
-        if cname:
-            try:
-                return self._channel_names.index(cname)
-            except Exception:
-                raise G2SDataError("Invalid channel name: " + cname)
-        else:
-            return cindex
-
-    def image_metadata(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        ch_index = self._get_channel_index(channel_index, channel_name)
-        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
-                t_index not in range(0, self._frames):
-            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
-
-        try:
-            md = self._metadata[G2SPosDatasetReader.get_frame_key(ch_index, z_index, t_index)]
-        except Exception as err:
-            raise G2SDataError("Frame key not available in metadata: " + err.__str__())
-
-        return md
-
-    def image_pixels(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        ch_index = self._get_channel_index(channel_index, channel_name)
-        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
-                t_index not in range(0, self._frames):
-            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
-
-        image_path = os.path.join(self._path,
-                                  self._metadata[G2SPosDatasetReader.get_frame_key(channel_index, z_index, t_index)][ImageMeta.FILE_NAME])
-        cv2_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-        if cv2_image is None:
-            raise G2SDataError("Invalid image reference: " + image_path)
-        return cv2_image
-
-
-class G2SDatasetReader:
-    def __init__(self, path: str):
-        """ 
-        Defines and loads the data set with four coordinates position-channel-slice-frame
-        """
-        self._positions = []
-        self._path = path
-        self._name = ""
-        self._load_meta()
-
-    def _load_meta(self):
-        """ Loads the metadata """
-        self._positions = []  # reset contents
-
-        list_of_dirs = [name for name in os.listdir(self._path) if os.path.isdir(os.path.join(self._path, name))]
-        self._positions = [None] * len(list_of_dirs)
-        for pos_dir in list_of_dirs:
-            pds = G2SPosDatasetReader(os.path.join(self._path, pos_dir))
-            self._positions[pds.position_index()] = pds
-
-        if not len(self._positions):
-            raise G2SDataError("Micro-manager data set not identified in " + self._path)
-        self._name = os.path.basename(self._path)
-
-    def name(self):
-        return self._name
-
-    def num_positions(self):
-        return len(self._positions)
-
-    def num_frames(self) -> int:
-        return self._positions[0].num_frames()
-
-    def num_channels(self) -> int:
-        return self._positions[0].num_channels()
-
-    def num_z_slices(self) -> int:
-        return self._positions[0].num_z_slices()
-
-    def width(self):
-        return self._positions[0].width()
-
-    def height(self):
-        return self._positions[0].height()
-
-    def pixel_type(self):
-        return self._positions[0].pixel_type()
-
-    def bit_depth(self):
-        return self._positions[0].bit_depth()
-
-    def channel_names(self) -> []:
-        return self._positions[0].channel_names()
-
-    def position_labels(self) -> []:
-        return [pn.name() for pn in self._positions]
-
-    def pixel_size(self) -> float:
-        return self._positions[0].pixel_size()
-
-    def summary_metadata(self) -> dict:
-        return self._positions[0].summary_metadata()
-
-    def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        return self._positions[position_index].image_metadata(channel_index, channel_name, z_index, t_index)
-
-    def image_pixels(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        return self._positions[position_index].image_pixels(channel_index, channel_name, z_index, t_index)
-
-    def get_position_dataset(self, position_index: int) -> G2SPosDatasetReader:
-        return self._positions[position_index]
-
-
-class G2SPosDatasetWriter:
+class PosDatasetWriter:
     """
     Micro-manager file format writer
     """
@@ -370,7 +79,7 @@ class G2SPosDatasetWriter:
 
     def save_metadata(self):
         """ Saves metadata. This can be used to occasionally save metadata to disk"""
-        file_name = os.path.join(self._path, self._name, G2SPosDatasetWriter.METADATA_FILE_NAME)
+        file_name = os.path.join(self._path, self._name, PosDatasetWriter.METADATA_FILE_NAME)
         with open(file_name, 'w') as fp:
             json_string = json.dumps(self._meta, indent=4)
             fp.write(json_string)
@@ -462,7 +171,7 @@ class G2SPosDatasetWriter:
 
         if not self._summary_meta:
             self._summary_meta = self._create_summary_meta()
-            self._meta[G2SPosDatasetWriter.KEY_SUMMARY] = self._summary_meta
+            self._meta[PosDatasetWriter.KEY_SUMMARY] = self._summary_meta
 
         if additional_meta:
             image_meta = additional_meta
@@ -480,9 +189,9 @@ class G2SPosDatasetWriter:
         image_meta[ImageMeta.SLICE] = z_slice
         image_meta[ImageMeta.SLICE_INDEX] = z_slice
 
-        image_meta[G2SPosDatasetWriter.KEY_SUMMARY] = self._summary_meta
+        image_meta[PosDatasetWriter.KEY_SUMMARY] = self._summary_meta
 
-        self._meta[G2SPosDatasetReader.get_frame_key(channel, z_slice, frame)] = image_meta
+        self._meta[PosDatasetReader.get_frame_key(channel, z_slice, frame)] = image_meta
 
         # save image
         file_name = os.path.join(self._path, self._name, ("img_%9d_%s_%d.tif" % (frame, self._channel_names[channel],
@@ -493,7 +202,7 @@ class G2SPosDatasetWriter:
     def _create_summary_meta(self):
         summary = self._additional_summary_meta
         summary[SummaryMeta.PREFIX] = self._name
-        summary[SummaryMeta.SOURCE] = G2SPosDatasetWriter.KEY_SOURCE
+        summary[SummaryMeta.SOURCE] = PosDatasetWriter.KEY_SOURCE
         summary[SummaryMeta.WIDTH] = self._width
         summary[SummaryMeta.HEIGHT] = self._height
         summary[SummaryMeta.PIXEL_TYPE] = self._pixel_type
@@ -509,7 +218,7 @@ class G2SPosDatasetWriter:
         return summary
 
 
-class G2SDatasetWriter:
+class DatasetWriter:
 
     def __init__(self):
         """ Constructor. Creates an empty data set.
@@ -526,7 +235,8 @@ class G2SDatasetWriter:
     def _empty(self) -> bool:
         return len(self._positions) == 0
 
-    def create(self, root_path: str, name: str, positions=1, channels=1, z_slices=1, frames=1, overwrite=False, additional_meta=None):
+    def create(self, root_path: str, name: str, positions=1, channels=1, z_slices=1, frames=1, overwrite=False,
+               additional_meta=None):
         """
         Create new data set
         :param root_path:
@@ -566,7 +276,8 @@ class G2SDatasetWriter:
 
         os.mkdir(ds_dir)  # create directory for the data set
 
-    def add_image(self, pixels: np.array, position=0, position_name="", channel=0, z_slice=0, frame=0, additional_meta=None):
+    def add_image(self, pixels: np.array, position=0, position_name="", channel=0, z_slice=0, frame=0,
+                  additional_meta=None):
         """
         Writes an image with specified coordinates
         :param position_name: name of the position
@@ -579,7 +290,7 @@ class G2SDatasetWriter:
         """
         if not self._positions[position]:
             # create a positional data set
-            pos_ds = G2SPosDatasetWriter()
+            pos_ds = PosDatasetWriter()
             pos_name = "Pos_" + str(position)
             if position_name:
                 pos_name = position_name
@@ -606,4 +317,3 @@ class G2SDatasetWriter:
         # this makes writer invalid for further use
         self._root_path = None
         self._name = None
-
