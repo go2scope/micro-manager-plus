@@ -44,7 +44,8 @@ class PosDatasetWriter:
         self._meta = {}
         self._additional_summary_meta = {}
 
-    def create(self, root_path: str, name: str, positions=0, channels=0, z_slices=0, frames=0, additional_meta=None):
+    def create(self, root_path: str, name: str, positions=0, channels=0, z_slices=0, frames=0,
+               pixel_type=Values.PIX_TYPE_NONE, additional_meta=None):
         """ Create new data set with specified dimensions"""
         if additional_meta is None:
             additional_meta = {}
@@ -65,6 +66,7 @@ class PosDatasetWriter:
             self._channel_names.append("Channel_" + str(i))
         self._z_slices = z_slices
         self._frames = frames
+        self._pixel_type = pixel_type
         self._pixel_size_um = 1.0
 
     def close(self):
@@ -231,12 +233,13 @@ class DatasetWriter:
         self._z_slices = 0
         self._frames = 0
         self._additional_summary_meta = {}
+        self._pixel_type = Values.PIX_TYPE_NONE
 
     def _empty(self) -> bool:
         return len(self._positions) == 0
 
     def create(self, root_path: str, name: str, positions=1, channels=1, z_slices=1, frames=1, overwrite=False,
-               additional_meta=None):
+               pixel_type=Values.PIX_TYPE_NONE, additional_meta=None):
         """
         Create new data set
         :param root_path:
@@ -250,6 +253,7 @@ class DatasetWriter:
         self._channels = channels
         self._z_slices = z_slices
         self._frames = frames
+        self._pixel_type = pixel_type
         self._additional_summary_meta = {}
         if additional_meta:
             self._additional_summary_meta = additional_meta
@@ -296,7 +300,11 @@ class DatasetWriter:
                 pos_name = position_name
 
             pos_ds.create(os.path.join(self._root_path, self._name), pos_name, len(self._positions), self._channels,
-                          self._z_slices, self._frames)
+                          self._z_slices, self._frames, pixel_type=self._pixel_type)
+
+            w = pixels.shape[0]
+            h = pixels.shape[1]
+            pos_ds.set_image_dimensions(w, h, self._pixel_type)
             self._positions[position] = pos_ds
         else:
             pos_ds = self._positions[position]
