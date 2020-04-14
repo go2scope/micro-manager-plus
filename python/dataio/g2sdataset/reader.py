@@ -79,9 +79,9 @@ class PosDatasetReader:
             self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
 
     @staticmethod
-    def get_frame_key(channel: int, z_slice: int, frame: int) -> str:
-        """ Returns frame key string based on the three integer coordinates """
-        return "FrameKey" + "-" + str(frame) + "-" + str(channel) + "-" + str(z_slice)
+    def get_frame_key(position: int, channel: int, z_slice: int, frame: int) -> str:
+        """ Returns frame key string based on the four integer coordinates """
+        return "FrameKey-%d-%d-%d-%d" % (position, frame, channel, z_slice)
 
     def name(self):
         return self._name
@@ -137,14 +137,14 @@ class PosDatasetReader:
         else:
             return cindex
 
-    def image_metadata(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
+    def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
         ch_index = self._get_channel_index(channel_index, channel_name)
         if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
         try:
-            md = self._metadata[PosDatasetReader.get_frame_key(ch_index, z_index, t_index)]
+            md = self._metadata[PosDatasetReader.get_frame_key(position_index, ch_index, z_index, t_index)]
         except Exception as err:
             raise G2SDataError("Frame key not available in metadata: " + err.__str__())
 
@@ -228,10 +228,10 @@ class DatasetReader:
         return self._positions[0].summary_metadata()
 
     def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        return self._positions[position_index].image_metadata(channel_index, channel_name, z_index, t_index)
+        return self._positions[position_index].image_metadata(position_index, channel_index, channel_name, z_index, t_index)
 
     def image_pixels(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        return self._positions[position_index].image_pixels(channel_index, channel_name, z_index, t_index)
+        return self._positions[position_index].image_pixels(position_index, channel_index, channel_name, z_index, t_index)
 
     def get_position_dataset(self, position_index: int) -> PosDatasetReader:
         return self._positions[position_index]

@@ -8,4 +8,4 @@ args = parser.parse_args()
 
 ds_writer = DatasetWriter()
 ds_name = "WriteTest"
-ds_writer.create(args.path, ds_name, overwrite=True)
+ds_writer.open(args.path, ds_name, overwrite=True)

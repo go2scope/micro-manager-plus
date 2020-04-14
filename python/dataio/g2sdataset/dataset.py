@@ -21,6 +21,8 @@ class SummaryMeta:
     # ---------
     PREFIX = "Prefix"  # serves as a "name"
     SOURCE = "Source"  # source application
+    VERSION = "MetadataVersion"
+    UUID = "UUID"
 
     # Multi-D coordinate space (sparse)
     # this represents intended coordinate space limits
@@ -30,7 +32,7 @@ class SummaryMeta:
     FRAMES = "Frames"
     POSITIONS = "Positions"
     CHANNEL_NAMES = "ChNames"
-    CHANNEL_COLORS = "Colors"
+    CHANNEL_COLORS = "ChColors"
 
     STAGE_POSITIONS = "StagePositions"
 
@@ -41,6 +43,13 @@ class SummaryMeta:
     PIXEL_SIZE = "PixelSize_um"
     BIT_DEPTH = "BitDepth"
     PIXEL_ASPECT = "PixelAspect"
+    NUMBER_OF_COMPONENTS = "NumComponents"
+
+    # acquisition related
+    TIME_FIRST = "TimeFirst"
+    SLICES_FIRST = "SlicesFirst"
+    COMPUTER_NAME = "ComputerName"
+    USER_NAME = "UserName"
 
 
 class ImageMeta:
@@ -88,13 +97,13 @@ class Image:
             image_meta = {}
             if pix_type == Values.PIX_TYPE_GRAY_8:
                 image_meta[SummaryMeta.PIXEL_TYPE] = Values.PIX_TYPE_GRAY_8
-                self.pixels = np.ndarray(shape=(width,height), dtype=np.uint8)
+                self.pixels = np.ndarray(shape=(height, width), dtype=np.uint8)
             elif pix_type == Values.PIX_TYPE_GRAY_16:
                 image_meta[SummaryMeta.PIXEL_TYPE] = Values.PIX_TYPE_GRAY_16
-                self.pixels = np.ndarray(shape=(width,height), dtype=np.uint16)
+                self.pixels = np.ndarray(shape=(width, height), dtype=np.uint16)
             elif pix_type == Values.PIX_TYPE_RGB_32:
                 image_meta[SummaryMeta.PIXEL_TYPE] = Values.PIX_TYPE_RGB_32
-                self.pixels = np.ndarray(shape=(width,height), dtype=np.uint32)
+                self.pixels = np.ndarray(shape=(width, height), dtype=np.uint32)
             else:
                 raise G2SDataError("Unsupported pixel type: " + pix_type)
 
@@ -116,6 +125,7 @@ class MCImage:
 
 class Dataset:
     """ Constructs basic data set, without images"""
+
     def __init__(self, positions=0, channels=1, z_slices=1, frames=1, width=0, height=0, pix_type=Values.PIX_TYPE_NONE):
         self._positions = positions
         self._channels = channels
@@ -124,6 +134,7 @@ class Dataset:
         self._width = width
         self._height = height
         self._pix_type = pix_type
+        self._pix_size_um = 1.0
 
         self._images = {}
         self._metadata = {}
@@ -172,6 +183,9 @@ class Dataset:
             else:
                 raise Exception("Inconsistent channel colors size in the metadata.")
 
+        if SummaryMeta.PIXEL_SIZE in meta.keys():
+            ds._pix_size_um = meta[SummaryMeta.PIXEL_SIZE]
+
         return ds
 
     def _create_basic_meta(self):
@@ -185,7 +199,8 @@ class Dataset:
         self._metadata[SummaryMeta.PIXEL_TYPE] = self._pix_type
 
         self._metadata[SummaryMeta.CHANNEL_NAMES] = [self._channel_defs[i].name for i in range(len(self._channel_defs))]
-        self._metadata[SummaryMeta.CHANNEL_COLORS] = [self._channel_defs[i].color for i in range(len(self._channel_defs))]
+        self._metadata[SummaryMeta.CHANNEL_COLORS] = [self._channel_defs[i].color for i in
+                                                      range(len(self._channel_defs))]
 
     @staticmethod
     def get_image_key(position: int, channel: int, z_slice: int, frame: int) -> str:
