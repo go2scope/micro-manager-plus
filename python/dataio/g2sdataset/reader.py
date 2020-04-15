@@ -42,7 +42,7 @@ class PosDatasetReader:
 
         self._pixel_size_um = 1.0
         self._frame_keys = 4  # default frame key coordinates
-        
+
         self._metadata = dict()
         self._load_meta()
 
