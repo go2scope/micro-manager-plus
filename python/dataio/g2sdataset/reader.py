@@ -19,7 +19,7 @@ class PosDatasetReader:
     """ Micro-manager file reader
     
         Represents a multi-dimensional image at a single location.
-        Three coordinates: frame-channel-slice
+        Four coordinates: position-frame-channel-slice
     """
 
     # constants
@@ -34,13 +34,15 @@ class PosDatasetReader:
         self._z_slices = 0
         self._channel_names = []
         self._frames = 0
-        self._positions = []
+        self._positions = 0
         self._width = 0
         self._height = 0
         self._pixel_type = Values.PIX_TYPE_NONE
         self._bit_depth = 0
 
         self._pixel_size_um = 1.0
+        self._frame_keys = 4  # default frame key coordinates
+        
         self._metadata = dict()
         self._load_meta()
 
@@ -78,10 +80,27 @@ class PosDatasetReader:
         if SummaryMeta.BIT_DEPTH in summary.keys():
             self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
 
+        for key in self._metadata.keys():
+            if key.startswith("FrameKey-"):
+                tokens = key.split("-")
+                if len(tokens) == 5:
+                    self._frame_keys = 4
+                    break
+                elif len(tokens) == 4:
+                    self._frame_keys = 3
+                    break
+                else:
+                    pass
+
     @staticmethod
-    def get_frame_key(position: int, channel: int, z_slice: int, frame: int) -> str:
+    def get_frame_key(position: int, channel: int, z_slice: int, frame: int, num_keys=4) -> str:
         """ Returns frame key string based on the four integer coordinates """
-        return "FrameKey-%d-%d-%d-%d" % (position, frame, channel, z_slice)
+        if num_keys == 4:
+            return "FrameKey-%d-%d-%d-%d" % (position, frame, channel, z_slice)
+        elif num_keys == 3:
+            return "FrameKey-%d-%d-%d" % (frame, channel, z_slice)
+        else:
+            raise G2SDataError("Invalid number of frame keys: " + num_keys)
 
     def name(self):
         return self._name
@@ -144,20 +163,23 @@ class PosDatasetReader:
             raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
 
         try:
-            md = self._metadata[PosDatasetReader.get_frame_key(position_index, ch_index, z_index, t_index)]
+            md = self._metadata[PosDatasetReader.get_frame_key(position_index, ch_index, z_index, t_index,
+                                                               num_keys=self._frame_keys)]
         except Exception as err:
             raise G2SDataError("Frame key not available in metadata: " + err.__str__())
 
         return md
 
-    def image_pixels(self, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        ch_index = self._get_channel_index(channel_index, channel_name)
-        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
+    def image_pixels(self, position_index=0, channel_index=0, z_index=0, t_index=0) -> np.array:
+        if channel_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
-            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+            raise G2SDataError("Invalid image coordinates: position=%d, channel=%d, slice=%d, frame=%d" %
+                               (position_index, channel_index, z_index, t_index))
 
         image_path = os.path.join(self._path,
-                                  self._metadata[PosDatasetReader.get_frame_key(channel_index, z_index, t_index)][ImageMeta.FILE_NAME])
+                                  self._metadata[PosDatasetReader.get_frame_key(position_index, channel_index,
+                                                                                z_index, t_index,
+                                                                                num_keys=self._frame_keys)][ImageMeta.FILE_NAME])
         cv2_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if cv2_image is None:
             raise G2SDataError("Invalid image reference: " + image_path)
@@ -227,11 +249,11 @@ class DatasetReader:
     def summary_metadata(self) -> dict:
         return self._positions[0].summary_metadata()
 
-    def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        return self._positions[position_index].image_metadata(position_index, channel_index, channel_name, z_index, t_index)
+    def image_metadata(self, position_index=0, channel_index=0, z_index=0, t_index=0) -> dict:
+        return self._positions[position_index].image_metadata(position_index, channel_index, z_index, t_index)
 
-    def image_pixels(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> np.array:
-        return self._positions[position_index].image_pixels(position_index, channel_index, channel_name, z_index, t_index)
+    def image_pixels(self, position_index=0, channel_index=0, z_index=0, t_index=0) -> np.array:
+        return self._positions[position_index].image_pixels(position_index, channel_index, z_index, t_index)
 
     def get_position_dataset(self, position_index: int) -> PosDatasetReader:
         return self._positions[position_index]

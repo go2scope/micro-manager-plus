@@ -13,6 +13,9 @@ import socket
 import uuid
 
 import cv2
+# import imageio
+# TODO switch from cv2 to imageio and write image metadata in the TIF file
+
 import numpy as np
 
 from dataio.g2sdataset.dataset import Values, G2SDataError, ImageMeta, SummaryMeta, ChannelDef
@@ -21,7 +24,8 @@ from dataio.g2sdataset.reader import PosDatasetReader
 
 class PosDatasetWriter:
     """
-    Micro-manager file format writer
+    Micro-manager file format writer for a single position
+    Intended for use only incorporated in the DatasetWriter
     """
     # constants
     METADATA_FILE_NAME = 'metadata.txt'
@@ -220,8 +224,13 @@ class PosDatasetWriter:
         file_name = os.path.join(self._path, self._name, file_name)
         if not cv2.imwrite(file_name, pixels):
             raise G2SDataError("Image write failed: " + file_name)
+        # TODO
+        # wr = imageio.get_writer(file_name)
+        # wr.append_data(pixels, meta={"description": json.dumps(image_meta, indent=4)})
+        # wr.close()
 
-    def _create_summary_meta(self):
+    def _create_summary_meta(self) -> dict:
+        """ Utility function to create essential summary metdata """
         summary = self._additional_summary_meta
         summary[SummaryMeta.PREFIX] = self._name
         summary[SummaryMeta.SOURCE] = PosDatasetWriter.KEY_SOURCE
@@ -249,6 +258,9 @@ class PosDatasetWriter:
 
 
 class DatasetWriter:
+    """
+    Write 6-D datasets in micro-manager 'classic' format
+    """
 
     def __init__(self):
         """ Constructor. Creates an empty data set.
@@ -418,3 +430,9 @@ class DatasetWriter:
         # this makes writer invalid for further use
         self._root_path = None
         self._name = None
+
+    def save_metadata(self):
+        """ Saves current metadata """
+        for pos in self._positions:
+            if pos:
+                pos.save_metadata()
