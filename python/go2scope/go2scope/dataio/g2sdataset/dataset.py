@@ -12,9 +12,6 @@ class G2SDataError(Exception):
     pass
 
 
-VERSION = "1.0.0"
-
-
 class SummaryMeta:
     """
     Summary metadata represents the entire data set
