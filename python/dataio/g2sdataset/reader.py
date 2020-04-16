@@ -156,14 +156,13 @@ class PosDatasetReader:
         else:
             return cindex
 
-    def image_metadata(self, position_index=0, channel_index=0, channel_name="", z_index=0, t_index=0) -> dict:
-        ch_index = self._get_channel_index(channel_index, channel_name)
-        if ch_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
+    def image_metadata(self, position_index=0, channel_index=0, z_index=0, t_index=0) -> dict:
+        if channel_index not in range(len(self._channel_names)) or z_index not in range(self._z_slices) or \
                 t_index not in range(0, self._frames):
-            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (ch_index, z_index, t_index))
+            raise G2SDataError("Invalid image coordinates: channel=%d, slice=%d, frame=%d" % (channel_index, z_index, t_index))
 
         try:
-            md = self._metadata[PosDatasetReader.get_frame_key(position_index, ch_index, z_index, t_index,
+            md = self._metadata[PosDatasetReader.get_frame_key(position_index, channel_index, z_index, t_index,
                                                                num_keys=self._frame_keys)]
         except Exception as err:
             raise G2SDataError("Frame key not available in metadata: " + err.__str__())
@@ -255,6 +254,6 @@ class DatasetReader:
     def image_pixels(self, position_index=0, channel_index=0, z_index=0, t_index=0) -> np.array:
         return self._positions[position_index].image_pixels(position_index, channel_index, z_index, t_index)
 
-    def get_position_dataset(self, position_index: int) -> PosDatasetReader:
-        return self._positions[position_index]
+    def get_position_name(self, p):
+        return self._positions[p].name()
 

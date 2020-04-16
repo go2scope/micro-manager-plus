@@ -32,6 +32,7 @@ pixel_size = 0.5
 ds_writer = DatasetWriter()
 additional_info = {"Description": "Test data set"}
 # first we define data set location and name, as well as the range of coordinates (mandatory)
+print("Creating new data set %s in %s, existing one (if any) will be deleted." % (ds_name, args.path))
 ds_writer.open(args.path, ds_name, positions=num_positions, channels=len(channels), z_slices=4, frames=num_frames,
                overwrite=True, additional_meta=additional_info)
 
@@ -40,13 +41,15 @@ ds_writer.initialize(img_width, img_height, pixel_type, bit_depth)
 
 # finally we set important data set properties (optional)
 ds_writer.set_pixel_size(pixel_size)
-ds_writer.set_channel_data(channels) # channel names and colors
+ds_writer.set_channel_data(channels)  # channel names and colors
 
 time_ms = 0.0
 interval_ms = 500
 start_z_um = 0.0
 z_step_um = 1.5
+print("Adding images to dataset...")
 for p in range(num_positions):
+    ds_writer.set_position_name(p, "POS-%02d" % p)
     for f in range(num_frames):
         z_um = start_z_um
         for z in range(num_slices):
@@ -57,24 +60,24 @@ for p in range(num_positions):
                 img_meta[ImageMeta.XUM] = p * 13.0
                 img_meta[ImageMeta.YUM] = p + 12.0
                 img_meta[ImageMeta.CHANNEL_NAME] = channels[c]
-                # img_meta[ImageMeta.POS_NAME] = "POS-%d" % p
                 img = np.random.randint(2 ** bit_depth - 1, size=(img_height, img_width)).astype('uint16')
-                ds_writer.add_image(img, position=p, position_name="POS-%d" % p, channel=c, z_slice=z, frame=f,
-                                    additional_meta=img_meta)
+                ds_writer.add_image(img, position=p, channel=c, z_slice=z, frame=f, additional_meta=img_meta)
             z_um += z_step_um
         time_ms += interval_ms
-
+# close and save
 ds_writer.close()
+print("Dataset completed and closed.")
 
 # now we attempt to read the new dataset
 ds_path = os.path.join(args.path, ds_name)
 ds_reader = DatasetReader(os.path.join(args.path, ds_name))
 print("Loading dataset from : " + ds_path)
 print(
-    "Positions: %d, Channels: %d, Slices: %d, Frames: %d, Image: %d X %d X %s" % (ds_reader.num_positions(), ds_reader.num_channels(),
-                                                                                  ds_reader.num_z_slices(), ds_reader.num_frames(),
-                                                                                  ds_reader.width(), ds_reader.height(),
-                                                                                  ds_reader.pixel_type()))
+    "Positions: %d, Channels: %d, Slices: %d, Frames: %d, Image: %d X %d X %s" % (
+    ds_reader.num_positions(), ds_reader.num_channels(),
+    ds_reader.num_z_slices(), ds_reader.num_frames(),
+    ds_reader.width(), ds_reader.height(),
+    ds_reader.pixel_type()))
 print("Channel names: " + str(ds_reader.channel_names()))
 print("Position labels: " + str(ds_reader.position_labels()))
 
@@ -93,11 +96,11 @@ for p in range(ds_reader.num_positions()):
                     # get meta
                     img_meta = ds_reader.image_metadata(position_index=p, channel_index=c, z_index=s, t_index=f)
 
-                    print("Image(c=%d, s=%d, f=%d): %s, %s, %s, %d X %d" %
-                                                                    (c, s, f,
-                                                                     ds_reader.get_position_dataset(p).position_index(),
-                                                                     img_meta[ImageMeta.FILE_NAME],
-                                                                     img.dtype.name, img.shape[0], img.shape[1]))
+                    print("Image(p=%d c=%d, s=%d, f=%d): %s, %s, %s, %d X %d" %
+                          (p, c, s, f,
+                           ds_reader.get_position_name(p),
+                           img_meta[ImageMeta.FILE_NAME],
+                           img.dtype.name, img.shape[1], img.shape[0]))
                 except G2SDataError as err:
                     print("Image(p=%d, c=%d, s=%d, f=%d) is not available: %s" % (p, c, s, f, err.__str__()))
                 except KeyError as err:

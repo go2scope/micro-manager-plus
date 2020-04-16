@@ -28,6 +28,7 @@ class PosDatasetWriter:
     Intended for use only incorporated in the DatasetWriter
     """
     # constants
+    ERRMSG_META_FROZEN = "We can't change the parameter, summary metadata is already frozen"
     METADATA_FILE_NAME = 'metadata.txt'
     KEY_SUMMARY = 'Summary'
     KEY_SOURCE = "G2SDataset"
@@ -48,7 +49,6 @@ class PosDatasetWriter:
         self._bit_depth = 0
 
         self._pixel_size_um = 1.0
-        self._summary_meta = {}
         self._meta = {}
         self._additional_summary_meta = {}
 
@@ -58,6 +58,7 @@ class PosDatasetWriter:
         self._uuid = str(uuid.uuid1())
         self._computer_name = socket.gethostname()
         self._user_name = getpass.getuser()
+        self._images_saved = False  # flags if there are any images saved for this position
 
         self._meta_version = 9
         # this is important to be less than 10, because we don't know how to insert
@@ -72,12 +73,6 @@ class PosDatasetWriter:
         if additional_meta:
             self._additional_summary_meta = additional_meta
 
-        # create a directory for the data
-        pos_dir = os.path.join(self._path, self._name)
-        if os.path.exists(pos_dir):
-            raise G2SDataError("Can't create position directory, one already exists: " + pos_dir)
-        os.mkdir(pos_dir)
-
         self._positions = positions
         self._channel_defs = []
         for i in range(channels):
@@ -85,6 +80,7 @@ class PosDatasetWriter:
         self._z_slices = z_slices
         self._frames = frames
         self._pixel_size_um = 1.0
+        self._images_saved = False
 
     def initialize(self, width: int, height: int, pixel_type: Values, bit_depth: int, num_components=1):
         """Defines image parameters for the entire data set"""
@@ -109,9 +105,22 @@ class PosDatasetWriter:
     def name(self):
         return self._name
 
+    def set_name(self, name: str):
+        if not self._empty():
+            raise G2SDataError(PosDatasetWriter.ERRMSG_META_FROZEN)
+        self._name = name
+
     def save_metadata(self):
         """ Saves metadata. This can be used to occasionally save metadata to disk"""
-        file_name = os.path.join(self._path, self._name, PosDatasetWriter.METADATA_FILE_NAME)
+        # create a directory for the data
+        pos_dir = os.path.join(self._path, self._name)
+        if not os.path.exists(pos_dir):
+            os.mkdir(pos_dir)
+
+        # we are signaling that we can't change position names anymore because directory name is frozen
+        self._images_saved = True
+
+        file_name = os.path.join(pos_dir, PosDatasetWriter.METADATA_FILE_NAME)
         with open(file_name, 'w') as fp:
             json_string = json.dumps(self._meta, indent=4)
             fp.write(json_string)
@@ -121,6 +130,8 @@ class PosDatasetWriter:
         Sets pixel size in microns, if omitted default is 1.0
         :param pixel_size_um:
         """
+        if not self._empty():
+            raise G2SDataError(PosDatasetWriter.ERRMSG_META_FROZEN)
         self._pixel_size_um = pixel_size_um
 
     def set_channel_data(self, channel_data: list):
@@ -128,6 +139,9 @@ class PosDatasetWriter:
         Defines channel names, the length must match number of channels defined when data set is created
         :param channel_data: list of channel definitions
         """
+        if not self._empty():
+            raise G2SDataError(PosDatasetWriter.ERRMSG_META_FROZEN)
+
         if len(self._channel_defs) == len(channel_data):
             self._channel_defs = channel_data
         else:
@@ -178,21 +192,12 @@ class PosDatasetWriter:
                 frame not in range(self._frames):
             raise G2SDataError("Image coordinates are not valid")
 
-        # set default bit depth if not defined earlier
-        if not self._bit_depth:
-            if pixels.ndim == 2:
-                self._bit_depth = pixels.itemsize * 8
-            else:
-                self._bit_depth = 8
+        if self._empty():
+            self._meta[PosDatasetWriter.KEY_SUMMARY] = self._create_summary_meta()
 
-        if not self._summary_meta:
-            self._summary_meta = self._create_summary_meta()
-            self._meta[PosDatasetWriter.KEY_SUMMARY] = self._summary_meta
-
+        image_meta = {}
         if additional_meta:
-            image_meta = additional_meta
-        else:
-            image_meta = {}
+            image_meta.update(additional_meta)
 
         image_meta[ImageMeta.WIDTH] = self._width
         image_meta[ImageMeta.HEIGHT] = self._height
@@ -209,8 +214,7 @@ class PosDatasetWriter:
         image_meta[SummaryMeta.BIT_DEPTH] = self._bit_depth
         if SummaryMeta.UUID not in image_meta:
             image_meta[SummaryMeta.UUID] = str(uuid.uuid1())
-        if ImageMeta.POS_NAME not in image_meta:
-            image_meta[ImageMeta.POS_NAME] = "Pos-" + str(position)
+        image_meta[ImageMeta.POS_NAME] = self._name
 
         file_name = "img_%09d_%s_%03d.tif" % (frame, self._channel_defs[channel].name, z_slice)
         image_meta[ImageMeta.FILE_NAME] = file_name
@@ -221,9 +225,16 @@ class PosDatasetWriter:
         self._meta[PosDatasetReader.get_frame_key(position, channel, z_slice, frame)] = image_meta
 
         # save image
-        file_name = os.path.join(self._path, self._name, file_name)
+        pos_dir = os.path.join(self._path, self._name)
+        if not os.path.exists(pos_dir):
+            os.mkdir(pos_dir)
+
+        file_name = os.path.join(pos_dir, file_name)
         if not cv2.imwrite(file_name, pixels):
             raise G2SDataError("Image write failed: " + file_name)
+
+        self._images_saved = True  # signals that some image files already exist on disk
+
         # TODO
         # wr = imageio.get_writer(file_name)
         # wr.append_data(pixels, meta={"description": json.dumps(image_meta, indent=4)})
@@ -231,7 +242,8 @@ class PosDatasetWriter:
 
     def _create_summary_meta(self) -> dict:
         """ Utility function to create essential summary metdata """
-        summary = self._additional_summary_meta
+        summary = {}
+        summary.update(self._additional_summary_meta)  # add additional summary info
         summary[SummaryMeta.PREFIX] = self._name
         summary[SummaryMeta.SOURCE] = PosDatasetWriter.KEY_SOURCE
         summary[SummaryMeta.WIDTH] = self._width
@@ -255,6 +267,9 @@ class PosDatasetWriter:
         summary[SummaryMeta.USER_NAME] = self._user_name
 
         return summary
+
+    def _empty(self):
+        return not self._images_saved
 
 
 class DatasetWriter:
@@ -365,6 +380,20 @@ class DatasetWriter:
             else:
                 raise G2SDataError("Unsupported pixel type: " + str(pixel_type))
 
+        # create an array of empty positional data sets
+        for p in range(len(self._positions)):
+            self._positions[p] = PosDatasetWriter()
+            pos_name = "Pos-" + str(p)
+            root_dir = os.path.join(self._root_path, self._name)
+            self._positions[p].open(root_dir, pos_name, len(self._positions),
+                                    len(self._channel_defs),
+                                    self._z_slices, self._frames, additional_meta=self._additional_summary_meta)
+
+            self._positions[p].initialize(self._width, self._height, self._pixel_type, self._bit_depth,
+                                          num_components=self._number_of_components)
+            self._positions[p].set_channel_data(self._channel_defs)
+            self._positions[p].set_pixel_size(self._pix_size_um)
+
     def set_channel_data(self, channel_data: list):
         """
         Defines channel names, the length must match number of channels defined when data set is created
@@ -375,6 +404,10 @@ class DatasetWriter:
         else:
             raise G2SDataError("Channel names array size does not match existing data")
 
+    def set_position_name(self, p: int, name: str):
+        """ Changes the default name of the position """
+        self._positions[p].set_name(name)
+
     def set_pixel_size(self, pixel_size_um: float):
         """
         Sets pixel size in microns, if omitted default is 1.0
@@ -382,11 +415,9 @@ class DatasetWriter:
         """
         self._pix_size_um = pixel_size_um
 
-    def add_image(self, pixels: np.array, position=0, position_name="", channel=0, z_slice=0, frame=0,
-                  additional_meta=None):
+    def add_image(self, pixels: np.array, position=0, channel=0, z_slice=0, frame=0, additional_meta=None):
         """
         Writes an image with specified coordinates
-        :param position_name: name of the position
         :param pixels: nd.array representing image pixels, must match pixel type
         :param position: position coordinate
         :param channel: channel coordinate
@@ -394,32 +425,9 @@ class DatasetWriter:
         :param frame: frame coordinate
         :param additional_meta: additional image metadata as dictionary
         """
-        if not self._positions[position]:
-            # create a positional data set
-            pos_ds = PosDatasetWriter()
-            pos_name = "Pos-" + str(position)
-            if position_name:
-                pos_name = position_name
 
-            pos_ds.open(os.path.join(self._root_path, self._name), pos_name, len(self._positions),
-                        len(self._channel_defs),
-                        self._z_slices, self._frames, additional_meta=self._additional_summary_meta)
-
-            h = pixels.shape[0]
-            w = pixels.shape[1]
-            pos_ds.initialize(w, h, self._pixel_type, self._bit_depth, num_components=self._number_of_components)
-            pos_ds.set_channel_data(self._channel_defs)
-            pos_ds.set_pixel_size(self._pix_size_um)
-            self._positions[position] = pos_ds
-        else:
-            pos_ds = self._positions[position]
-            if position_name:
-                if pos_ds.name() != position_name:
-                    raise G2SDataError("Position name does not mach existing one: " + position_name)
-
-        # finally add image
-        pos_ds.add_image(pixels, position=position, channel=channel, z_slice=z_slice, frame=frame,
-                         additional_meta=additional_meta)
+        self._positions[position].add_image(pixels, position=position, channel=channel, z_slice=z_slice, frame=frame,
+                                            additional_meta=additional_meta)
 
     def close(self):
         """ closes entire data set and saves all metadata """
