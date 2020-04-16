@@ -8,3 +8,4 @@ v-env/
 python/dataio/g2sdataset/__pycache__/
 python/dataio/test/aws_config.py
 *.pyc
+python/go2scope/venv/
