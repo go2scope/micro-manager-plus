@@ -12,7 +12,7 @@ setuptools.setup(
     long_description=long_description,
     packages=setuptools.find_packages(),
     install_requires=[
-        'opencv-python==4.1.0.25',
+        'imageio==2.8.0', 'numpy==1.16.4', 'opencv-python==4.1.0.25', 'Pillow==7.1.1',
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
