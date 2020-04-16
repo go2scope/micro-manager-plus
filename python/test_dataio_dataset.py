@@ -5,9 +5,9 @@ import os
 
 import numpy as np
 
-from dataio.g2sdataset.dataset import Values, SummaryMeta, ImageMeta, ChannelDef, G2SDataError
-from dataio.g2sdataset.reader import DatasetReader
-from dataio.g2sdataset.writer import DatasetWriter
+from go2scope.dataio.g2sdataset.dataset import ChannelDef, Values, ImageMeta, G2SDataError
+from go2scope.dataio.g2sdataset.reader import DatasetReader
+from go2scope.dataio.g2sdataset.writer import DatasetWriter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('path', help='directory path for the generated dataset')

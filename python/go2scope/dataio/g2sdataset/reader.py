@@ -12,7 +12,7 @@ from json import JSONDecodeError
 import cv2
 import numpy as np
 
-from dataio.g2sdataset.dataset import Values, SummaryMeta, ImageMeta, G2SDataError
+from go2scope.dataio.g2sdataset.dataset import Values, SummaryMeta, G2SDataError, ImageMeta
 
 
 class PosDatasetReader:

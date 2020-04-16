@@ -1,14 +1,14 @@
 import setuptools
 
-with open("README.md", "r") as fh:
+with open("dataio/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="dataio",
-    version="0.0.0",
+    name="go2scope",
+    version="1.0.0",
     author="Nenad Amodaj",
     author_email="nenad@go2scope.com",
-    description="Data IO package for Micro Manager image format.",
+    description="go2scope support functions for python: data I/O",
     long_description=long_description,
     packages=setuptools.find_packages(),
     install_requires=[

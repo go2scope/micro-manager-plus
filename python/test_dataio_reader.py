@@ -2,8 +2,8 @@ import argparse
 import json
 
 # parse command line arguments
-from dataio.g2sdataset.dataset import ImageMeta, G2SDataError
-from dataio.g2sdataset.reader import DatasetReader
+from go2scope.dataio.g2sdataset.dataset import ImageMeta, G2SDataError
+from go2scope.dataio.g2sdataset.reader import DatasetReader
 
 parser = argparse.ArgumentParser()
 parser.add_argument('path', help='directory path of the data set')
@@ -14,10 +14,11 @@ ds_reader = DatasetReader(args.path)
 
 print("Loaded dataio: " + args.path)
 print(
-    "Positions: %d, Channels: %d, Slices: %d, Frames: %d, Image: %d X %d X %s" % (ds_reader.num_positions(), ds_reader.num_channels(),
-                                                                                  ds_reader.num_z_slices(), ds_reader.num_frames(),
-                                                                                  ds_reader.width(), ds_reader.height(),
-                                                                                  ds_reader.pixel_type()))
+    "Positions: %d, Channels: %d, Slices: %d, Frames: %d, Image: %d X %d X %s" % (
+    ds_reader.num_positions(), ds_reader.num_channels(),
+    ds_reader.num_z_slices(), ds_reader.num_frames(),
+    ds_reader.width(), ds_reader.height(),
+    ds_reader.pixel_type()))
 print("Channel names: " + str(ds_reader.channel_names()))
 print("Position labels: " + str(ds_reader.position_labels()))
 
@@ -37,10 +38,9 @@ for p in range(ds_reader.num_positions()):
                     img_meta = ds_reader.image_metadata(position_index=p, channel_index=c, z_index=s, t_index=f)
 
                     print("Image(c=%d, s=%d, f=%d): %s, %s, %s, %d X %d" %
-                                                                    (c, s, f,
-                                                                     ds_reader.get_position_dataset(p).position_index(),
-                                                                     img_meta[ImageMeta.FILE_NAME],
-                                                                     img.dtype.name, img.shape[0], img.shape[1]))
+                          (c, s, f, p,
+                           img_meta[ImageMeta.FILE_NAME],
+                           img.dtype.name, img.shape[0], img.shape[1]))
                 except G2SDataError as err:
                     print("Image(p=%d, c=%d, s=%d, f=%d) is not available: %s" % (p, c, s, f, err.__str__()))
                 except KeyError as err:

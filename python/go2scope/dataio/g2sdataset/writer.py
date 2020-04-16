@@ -18,8 +18,8 @@ import cv2
 
 import numpy as np
 
-from dataio.g2sdataset.dataset import Values, G2SDataError, ImageMeta, SummaryMeta, ChannelDef
-from dataio.g2sdataset.reader import PosDatasetReader
+from go2scope.dataio.g2sdataset import Values, G2SDataError, ImageMeta, SummaryMeta, ChannelDef
+from go2scope.dataio.g2sdataset.reader import PosDatasetReader
 
 
 class PosDatasetWriter:
