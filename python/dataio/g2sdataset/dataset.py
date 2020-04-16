@@ -12,6 +12,9 @@ class G2SDataError(Exception):
     pass
 
 
+VERSION = "1.0.0"
+
+
 class SummaryMeta:
     """
     Summary metadata represents the entire data set
@@ -218,6 +221,7 @@ class Dataset:
         channel = img.metadata[ImageMeta.CHANNEL_INDEX]
         slice = img.metadata[ImageMeta.SLICE_INDEX]
         frame = img.metadata[ImageMeta.FRAME_INDEX]
+        self._images[self.get_image_key(position, channel, slice, frame)] = img
 
     def get_image(self, position=0, channel=0, z_slice=0, frame=0) -> Image:
         return self._images[self.get_image_key(position, channel, z_slice, frame)]
