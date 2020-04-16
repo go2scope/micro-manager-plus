@@ -1,6 +1,6 @@
 import setuptools
 
-with open("dataio/README.md", "r") as fh:
+with open("go2scope/dataio/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
