@@ -5,6 +5,7 @@ Module to support reading micro-manager multi-dimensional
 data sets.
 
 """
+import datetime
 import getpass
 import json
 import os
@@ -147,6 +148,7 @@ class PosDatasetWriter:
         else:
             raise G2SDataError("Channel names array size does not match existing data")
 
+
     def add_image(self, pixels: np.array, position=0, channel=0, z_slice=0, frame=0, additional_meta=None):
         """
         Writes an image with specified coordinates
@@ -265,6 +267,7 @@ class PosDatasetWriter:
         summary[SummaryMeta.VERSION] = self._meta_version
         summary[SummaryMeta.COMPUTER_NAME] = self._computer_name
         summary[SummaryMeta.USER_NAME] = self._user_name
+        summary[SummaryMeta.TIME] = datetime.datetime.now()
 
         return summary
 
@@ -295,6 +298,8 @@ class DatasetWriter:
         self._height = 0
         self._bit_depth = 0
         self._pix_size_um = 1.0
+
+        self._comment = ""
 
     def _empty(self) -> bool:
         return len(self._positions) == 0
@@ -415,6 +420,9 @@ class DatasetWriter:
         """
         self._pix_size_um = pixel_size_um
 
+    def set_comment(self, text: str):
+        self._comment = text
+
     def add_image(self, pixels: np.array, position=0, channel=0, z_slice=0, frame=0, additional_meta=None):
         """
         Writes an image with specified coordinates
@@ -434,6 +442,8 @@ class DatasetWriter:
         for pos in self._positions:
             if pos:
                 pos.close()
+
+        # TODO: save comments to comment file
 
         # this makes writer invalid for further use
         self._root_path = None

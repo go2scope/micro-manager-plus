@@ -50,6 +50,7 @@ class SummaryMeta:
     SLICES_FIRST = "SlicesFirst"
     COMPUTER_NAME = "ComputerName"
     USER_NAME = "UserName"
+    TIME = "Time"
 
 
 class ImageMeta:

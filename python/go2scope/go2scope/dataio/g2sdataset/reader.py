@@ -40,6 +40,8 @@ class PosDatasetReader:
         self._pixel_type = Values.PIX_TYPE_NONE
         self._bit_depth = 0
 
+        self._comment = ""
+
         self._pixel_size_um = 1.0
         self._frame_keys = 4  # default frame key coordinates
 
@@ -80,6 +82,8 @@ class PosDatasetReader:
         if SummaryMeta.BIT_DEPTH in summary.keys():
             self._bit_depth = summary[SummaryMeta.BIT_DEPTH]
 
+        # TODO: load frome comment file
+
         for key in self._metadata.keys():
             if key.startswith("FrameKey-"):
                 tokens = key.split("-")
@@ -100,7 +104,7 @@ class PosDatasetReader:
         elif num_keys == 3:
             return "FrameKey-%d-%d-%d" % (frame, channel, z_slice)
         else:
-            raise G2SDataError("Invalid number of frame keys: " + num_keys)
+            raise G2SDataError("Invalid number of frame keys: " + str(num_keys))
 
     def name(self):
         return self._name
@@ -131,6 +135,9 @@ class PosDatasetReader:
 
     def pixel_size(self) -> float:
         return self._pixel_size_um
+
+    def comment(self) -> str:
+        return self._comment
 
     def position_index(self) -> int:
         """
