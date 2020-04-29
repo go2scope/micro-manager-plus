@@ -1,11 +1,11 @@
 import setuptools
 
-with open("go2scope/dataio/README.md", "r") as fh:
+with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="go2scope",
-    version="0.0.0",
+    version="0.0.1",
     author="Nenad Amodaj",
     author_email="nenad@go2scope.com",
     description="go2scope support functions for python: data I/O",
@@ -14,7 +14,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     url="https://github.com/go2scope/micro-manager-plus/tree/master/python/go2scope",
     install_requires=[
-        'numpy==1.16.4', 'opencv-python==4.2.0.34',
+        'numpy==1.18.2', 'opencv-python==4.2.0.34',
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
