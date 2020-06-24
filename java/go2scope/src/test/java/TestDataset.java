@@ -1,6 +1,7 @@
 import go2scope.dataset.*;
 import org.json.JSONObject;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 
 public class TestDataset {
@@ -29,7 +30,7 @@ public class TestDataset {
             double zStepUm = 1.5;
 
             for (int p=0; p<numPositions; p++) {
-                ds.setPositionName(String.format("POS-%02d", p), p);
+                ds.setPositionName(String.format("POS_%02d", p), p);
                 for (int f=0; f<numFrames; f++) {
                     double zUm = startZUm;
                     for (int s=0; s<numSlices; s++) {
@@ -53,7 +54,27 @@ public class TestDataset {
 
         } catch (DatasetException e) {
             e.printStackTrace();
+            return;
         }
+        System.out.println("Dataset completed.");
 
+        String dsParentDir = args[0];
+        System.out.println(String.format("Saving dataset %s to directory %s...", ds.getName(), dsParentDir));
+        try {
+            ds.saveToDir(dsParentDir, true, true); // unload images and overwrite
+        } catch (DatasetException | IOException e) {
+            e.printStackTrace();
+            return;
+        }
+        System.out.println("Saving complete.");
+
+        String savedDsPath = dsParentDir + "/" + ds.getName();
+        System.out.println(String.format("Loading dataset %s from path %s...", ds.getName(), savedDsPath));
+
+        try {
+            Dataset savedDs = Dataset.loadFromPath(savedDsPath, true);
+        } catch (DatasetException | FileNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 }

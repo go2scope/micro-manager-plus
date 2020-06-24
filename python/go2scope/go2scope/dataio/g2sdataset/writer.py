@@ -267,7 +267,7 @@ class PosDatasetWriter:
         summary[SummaryMeta.VERSION] = self._meta_version
         summary[SummaryMeta.COMPUTER_NAME] = self._computer_name
         summary[SummaryMeta.USER_NAME] = self._user_name
-        summary[SummaryMeta.TIME] = datetime.datetime.now()
+        summary[SummaryMeta.TIME] = datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
         return summary
 

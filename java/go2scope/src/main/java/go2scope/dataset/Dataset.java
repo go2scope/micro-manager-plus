@@ -15,6 +15,8 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Scanner;
 import java.util.UUID;
@@ -79,7 +81,7 @@ public class Dataset {
                 File posMdFile = new File(posDir.getAbsolutePath() + "/" + METADATA_FILE_NAME);
                 JSONObject md;
                 if (posMdFile.exists()) {
-                    String posName = posMdFile.getName();
+                    String posName = posDir.getName();
                     StringBuilder metaContent = new StringBuilder();
                     Scanner scanner = new Scanner(new FileInputStream(posMdFile));
                     while (scanner.hasNextLine())
@@ -92,32 +94,30 @@ public class Dataset {
                     // Adding an extra curly brace at the end does not hurt.
                     metaContent.append("}");
                     md = new JSONObject(metaContent.toString());
-                    ds.summaryMeta = md;
 
                     // load summary metadata
                     if (ds.summaryMeta.keySet().size() == 0) {
                         ds.summaryMeta = md.getJSONObject(KEY_SUMMARY);
 
                         // extract basic info
-                        ds.numPositions = md.getInt(SummaryMeta.POSITIONS);
-                        ds.numChannels = md.getInt(SummaryMeta.CHANNELS);
-                        ds.numSlices = md.getInt(SummaryMeta.SLICES);
-                        ds.numFrames = md.getInt(SummaryMeta.FRAMES);
+                        ds.numPositions = ds.summaryMeta.getInt(SummaryMeta.POSITIONS);
+                        ds.numChannels = ds.summaryMeta.getInt(SummaryMeta.CHANNELS);
+                        ds.numSlices = ds.summaryMeta.getInt(SummaryMeta.SLICES);
+                        ds.numFrames = ds.summaryMeta.getInt(SummaryMeta.FRAMES);
 
-                        ds.width = md.getInt(SummaryMeta.WIDTH);
-                        ds.height = md.getInt(SummaryMeta.HEIGHT);
-                        ds.bitDepth = md.getInt(SummaryMeta.BIT_DEPTH);
-                        ds.pixelType = md.getString(SummaryMeta.PIXEL_TYPE);
-                        ds.pixelSizeUm = md.getDouble(SummaryMeta.PIXEL_SIZE);
-                        ds.numComponents = md.getInt(SummaryMeta.NUMBER_OF_COMPONENTS);
+                        ds.width = ds.summaryMeta.getInt(SummaryMeta.WIDTH);
+                        ds.height = ds.summaryMeta.getInt(SummaryMeta.HEIGHT);
+                        ds.bitDepth = ds.summaryMeta.getInt(SummaryMeta.BIT_DEPTH);
+                        ds.pixelType = ds.summaryMeta.getString(SummaryMeta.PIXEL_TYPE);
+                        ds.pixelSizeUm = ds.summaryMeta.getDouble(SummaryMeta.PIXEL_SIZE);
+                        ds.numComponents = ds.summaryMeta.getInt(SummaryMeta.NUMBER_OF_COMPONENTS);
 
-                        JSONArray chNames = md.getJSONArray(SummaryMeta.CHANNEL_NAMES);
-                        JSONArray chColors = md.getJSONArray(SummaryMeta.CHANNEL_COLORS);
+                        JSONArray chNames = ds.summaryMeta.getJSONArray(SummaryMeta.CHANNEL_NAMES);
+                        JSONArray chColors = ds.summaryMeta.getJSONArray(SummaryMeta.CHANNEL_COLORS);
 
                         ds.channelData = new ChannelData[ds.numChannels];
                         for (int i=0; i<ds.numChannels; i++) {
-                            ds.channelData[i].name = chNames.getString(i);
-                            ds.channelData[i].color = chNames.getInt(i);
+                            ds.channelData[i] = new ChannelData(chNames.getString(i), chColors.getInt(i));
                         }
 
                         ds.positionNames = new String[ds.numPositions];
@@ -135,6 +135,7 @@ public class Dataset {
                                 ds.positionNames[posIndex] = posName;
                                 break;
                             }
+
                         }
 
                     if (posIndex < 0)
@@ -171,7 +172,7 @@ public class Dataset {
 
         for (int p=0; p<numPositions; p++) {
             if (anyImagesOnPosition(p)) {
-                File posDir = new File(rootPath + "/" + positionNames[p]);
+                File posDir = new File(rootPath + "/" + name + "/" + positionNames[p]);
                 if (!posDir.exists()) {
                     if (!posDir.mkdir())
                         throw new DatasetException("Unable to create directory: " + posDir.getAbsolutePath());
@@ -215,17 +216,16 @@ public class Dataset {
         if (rootPath.length() > 0) throw new DatasetException("Dataset has root directory already defined.");
 
         // create root directory
-        File targetDir = new File(parentDir);
+        File targetDir = new File(parentDir + "/" + name);
         if (targetDir.exists()) {
             if (overwrite) {
                 FileUtils.deleteDirectory(targetDir);
             } else
                 throw new DatasetException("Directory already exists: " + targetDir);
-        } else {
-            boolean ok = targetDir.mkdir();
-            if (!ok)
-                throw new DatasetException("Unable to create directory: " + targetDir.getAbsolutePath());
         }
+        boolean ok = targetDir.mkdir();
+        if (!ok)
+            throw new DatasetException("Unable to create directory: " + targetDir.getAbsolutePath());
 
         rootPath = parentDir;
         name = targetDir.getName();
@@ -241,7 +241,7 @@ public class Dataset {
                     for (int f = 0; f < numFrames; f++) {
                         String fk = getFrameKey(p, c, s, f, 4);
                         G2SImage img = imageMap.get(fk);
-                        md.put(fk, generateImageMetadata(p, c, s, f));
+                        md.put(fk, img.getMetadata());
                     }
                 }
             }
@@ -256,13 +256,14 @@ public class Dataset {
         imgMeta.put(ImageMeta.CHANNEL_INDEX, c);
         imgMeta.put(ImageMeta.POS_INDEX, p);
         imgMeta.put(ImageMeta.SLICE_INDEX, s);
+        imgMeta.put(ImageMeta.SLICE, s);
         imgMeta.put(ImageMeta.FRAME_INDEX, f);
+        imgMeta.put(ImageMeta.FRAME, f);
         imgMeta.put(ImageMeta.CHANNEL_NAME, channelData[c].name);
         imgMeta.put(SummaryMeta.BIT_DEPTH, bitDepth);
         imgMeta.put(SummaryMeta.PIXEL_TYPE, pixelType);
         imgMeta.put(SummaryMeta.PIXEL_SIZE, pixelSizeUm);
         imgMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
-        String fName = String.format("img_%09d_%s_%03d.tif", f, channelData[c].name, s);
         imgMeta.put(ImageMeta.FILE_NAME, getFileName(f, channelData[c].name, s));
         imgMeta.put(ImageMeta.POS_NAME, positionNames[p]);
         return imgMeta;
@@ -280,15 +281,13 @@ public class Dataset {
 
         // channels
         channelData = new ChannelData[numChannels];
-        for (int i=0; i<channelData.length; i++) {
-            channelData[i].color = Color.gray.getRGB();
-            channelData[i].name = String.format("Channel-%d", i);
-        }
+        for (int i=0; i<channelData.length; i++)
+            channelData[i] = new ChannelData(String.format("Channel-%d", i), Color.gray.getRGB());
 
         // positions
         positionNames = new String[numPositions];
         for (int i=0; i<positionNames.length; i++) {
-            String fmt = "Pos-%" + (int) (Math.log10(positionNames.length) + 1) + "d";
+            String fmt = "Pos_%" + (int) (Math.log10(positionNames.length) + 1) + "d";
             positionNames[i] = String.format(fmt, i);
         }
 
@@ -331,6 +330,7 @@ public class Dataset {
         summaryMeta.put(SummaryMeta.NUMBER_OF_COMPONENTS, numComponents);
         summaryMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
         summaryMeta.put(SummaryMeta.VERSION, 9);
+        summaryMeta.put(SummaryMeta.TIME, new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()));
         String hostName = "unknown";
         try {
             summaryMeta.put(SummaryMeta.COMPUTER_NAME, InetAddress.getLocalHost().getHostName());
@@ -350,7 +350,8 @@ public class Dataset {
             if (anyImagesOnPosition(i))
                 throw new DatasetException("Dataset already contains images. Can't change pixel size.");
         }
-        pixelSizeUm = pixelSizeUm;
+        pixelSizeUm = pixSizeUm;
+        summaryMeta.put(SummaryMeta.PIXEL_SIZE, pixSizeUm);
     }
 
     public void setChannelData(ChannelData[] channels) throws DatasetException {
@@ -361,10 +362,20 @@ public class Dataset {
         if (channels.length != numChannels)
             throw new DatasetException("Number of channels does not match.");
         channelData = channels;
+
+        // update metadata
+        JSONArray chNames = new JSONArray();
+        JSONArray chColors = new JSONArray();
+        for (int i=0; i<numChannels; i++) {
+            chNames.put(channelData[i].name);
+            chColors.put(channelData[i].color);
+        }
+        summaryMeta.put(SummaryMeta.CHANNEL_NAMES, chNames);
+        summaryMeta.put(SummaryMeta.CHANNEL_COLORS, chColors);
     }
 
     /**
-     * Set name for the position index
+     * Set name for the position index.
      * @param name - new name
      * @param pos - position index
      * @throws DatasetException
@@ -375,6 +386,7 @@ public class Dataset {
         if (anyImagesOnPosition(pos))
             throw new DatasetException("There are already images on this position. Can't change the name.");
         positionNames[pos] = name;
+        updateMetadata(pos, ImageMeta.POS_NAME, name);
     }
 
     public void addImage(Object pixels, int position, int channel, int slice, int frame, JSONObject imageMeta) throws DatasetException {
@@ -462,7 +474,8 @@ public class Dataset {
             for (int s = 0; s < numSlices; s++) {
                 for (int f = 0; f < numFrames; f++) {
                     try {
-                        if (imageMap.get(getFrameKey(positionIndex, c, s, f, 4)).getPixels() != null)
+                        G2SImage img = imageMap.get(getFrameKey(positionIndex, c, s, f, 4));
+                        if (img.getPixels() != null || img.isSaved())
                             return true;
                     } catch (DatasetException e) {
                         e.printStackTrace();
@@ -472,5 +485,20 @@ public class Dataset {
         }
         return false;
     }
+
+    private void updateMetadata(int positionIndex, String key, String value) {
+        for (int c = 0; c < numChannels; c++) {
+            for (int s = 0; s < numSlices; s++) {
+                for (int f = 0; f < numFrames; f++) {
+                    try {
+                        imageMap.get(getFrameKey(positionIndex, c, s, f, 4)).getMetadata().put(key, value);
+                    } catch (DatasetException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
 
 }
