@@ -58,6 +58,12 @@ public class Dataset {
         return ds;
     }
 
+    public void setName(String newName) throws DatasetException {
+        if (!rootPath.isEmpty())
+            throw new DatasetException("Can't change the name of dataset stored on disk.");
+        name = newName;
+    }
+
     public String getName() {
         return name;
     }
@@ -355,7 +361,7 @@ public class Dataset {
     }
 
     public void setChannelData(ChannelData[] channels) throws DatasetException {
-        for (int i=0; i<numPositions; i++) {
+        for (int i = 0; i < numPositions; i++) {
             if (anyImagesOnPosition(i))
                 throw new DatasetException("Dataset already contains images. Can't change channel data.");
         }
@@ -366,12 +372,15 @@ public class Dataset {
         // update metadata
         JSONArray chNames = new JSONArray();
         JSONArray chColors = new JSONArray();
-        for (int i=0; i<numChannels; i++) {
+        for (int i = 0; i < numChannels; i++) {
             chNames.put(channelData[i].name);
             chColors.put(channelData[i].color);
         }
         summaryMeta.put(SummaryMeta.CHANNEL_NAMES, chNames);
         summaryMeta.put(SummaryMeta.CHANNEL_COLORS, chColors);
+
+        // update image metadata
+        updateFilenames();
     }
 
     /**
@@ -386,7 +395,7 @@ public class Dataset {
         if (anyImagesOnPosition(pos))
             throw new DatasetException("There are already images on this position. Can't change the name.");
         positionNames[pos] = name;
-        updateMetadata(pos, ImageMeta.POS_NAME, name);
+        updateImageMetadata(pos, ImageMeta.POS_NAME, name);
     }
 
     public void addImage(Object pixels, int position, int channel, int slice, int frame, JSONObject imageMeta) throws DatasetException {
@@ -395,11 +404,27 @@ public class Dataset {
         img.addMeta(imageMeta);
     }
 
+    /**
+     * Returns image pixels on a given coordinate position.
+     * If the image is not in memory, it will be loaded from disk.
+     * If the image was never acquired, a blank (black) image will be returned
+     * @param position
+     * @param channel
+     * @param slice
+     * @param frame
+     * @return
+     * @throws DatasetException
+     */
     public Object getImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
-        Object pixels = imageMap.get(getFrameKey(position, channel, slice, frame, 4)).getPixels();
-        if (pixels == null) {
-            String imagePath = rootPath + "/" + positionNames[position] + "/" + getFileName(frame, channelData[channel].name, slice);
-            pixels = loadImagePixels(imagePath);
+        G2SImage img = imageMap.get(getFrameKey(position, channel, slice, frame, 4));
+        Object pixels = img.getPixels();
+        if (img.getPixels() == null) {
+            if (img.isAcquired()) {
+                String imagePath = rootPath + "/" + positionNames[position] + "/" + getFileName(frame, channelData[channel].name, slice);
+                return loadImagePixels(imagePath);
+            } else {
+                return createBlankImage();
+            }
         }
         return pixels;
     }
@@ -409,6 +434,19 @@ public class Dataset {
         if (ip.getProcessor() == null)
             throw new DatasetException("Failed to load image: " + imagePath);
         return ip.getProcessor().getPixels();
+    }
+
+    private Object createBlankImage() throws DatasetException {
+        Object img;
+        if (pixelType.contentEquals(Values.PIX_TYPE_GRAY_16))
+            img = new short[width*height];
+        else if (pixelType.contentEquals(Values.PIX_TYPE_RGB_32))
+            img = new int[width*height];
+        else if (pixelType.contentEquals(Values.PIX_TYPE_GRAY_8))
+            img = new byte[width*height];
+        else
+            throw new DatasetException("Unsupported pixel format (image buffer)");
+        return img;
     }
 
     private void saveImagePixels(Object img, String imagePath) throws DatasetException {
@@ -486,7 +524,7 @@ public class Dataset {
         return false;
     }
 
-    private void updateMetadata(int positionIndex, String key, String value) {
+    private void updateImageMetadata(int positionIndex, String key, String value) {
         for (int c = 0; c < numChannels; c++) {
             for (int s = 0; s < numSlices; s++) {
                 for (int f = 0; f < numFrames; f++) {
@@ -494,6 +532,22 @@ public class Dataset {
                         imageMap.get(getFrameKey(positionIndex, c, s, f, 4)).getMetadata().put(key, value);
                     } catch (DatasetException e) {
                         e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+
+    private void updateFilenames() {
+        for (int p = 0; p < numPositions; p++) {
+            for (int c = 0; c < numChannels; c++) {
+                for (int s = 0; s < numSlices; s++) {
+                    for (int f = 0; f < numFrames; f++) {
+                        try {
+                            imageMap.get(getFrameKey(p, c, s, f, 4)).getMetadata().put(ImageMeta.FILE_NAME, getFileName(f, channelData[c].name, s));
+                        } catch (DatasetException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
             }
