@@ -1,7 +1,17 @@
+/**
+ * Copyright (c) Luminous Point LLC, 2014. All rights reserved.
+ * Provided under BSD license. Details in the license.txt file.
+ *
+ * Dataset specific exception
+ *
+ * @author Nenad Amodaj
+ * @author Milos Jovanovic
+ * @version 2.0
+ * @since 2014-03-01
+ */
 package go2scope.dataset;
 
 public class DatasetException extends Exception {
-    private static final long serialVersionUID = -8829247065013272369L;
     private Throwable cause;
 
     /**

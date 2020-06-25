@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) Luminous Point LLC, 2014. All rights reserved.
+ * Provided under BSD license. Details in the license.txt file.
+ *
+ * Pre-define micro-manager tag values
+ *
+ * @author Nenad Amodaj
+ * @author Milos Jovanovic
+ * @version 2.0
+ * @since 2014-03-01
+ */
 package go2scope.dataset;
 
 public class Values {

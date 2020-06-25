@@ -1,3 +1,15 @@
+/**
+ * Copyright (c) Luminous Point LLC, 2014. All rights reserved.
+ * Provided under BSD license. Details in the license.txt file.
+ *
+ * Create, read and write Micro-manager classic file format (separate TIFs and position directories)
+ * Part of the Go2Scope software platform.
+ *
+ * @author Nenad Amodaj
+ * @author Milos Jovanovic
+ * @version 2.0
+ * @since 2014-03-01
+ */
 package go2scope.dataset;
 
 import ij.ImagePlus;
@@ -21,6 +33,9 @@ import java.util.HashMap;
 import java.util.Scanner;
 import java.util.UUID;
 
+/**
+ * Class for reading, writing and creating Micro-manager multi-dimensional image data sets.
+ */
 public class Dataset {
     private String name = "";
     private String rootPath = "";
@@ -44,8 +59,17 @@ public class Dataset {
     public static final String SOURCE_MODULE = "Go2Scope";
     public static final String METADATA_FILE_NAME = "metadata.txt";
     public static final String KEY_SUMMARY = "Summary";
+    public static final int METADATA_VERSION = 9;
 
-    // factory method to create new empty in-memory dataset
+    /**
+     * Creates an empty and un-initialized data set.
+     * @param label - name of the data set
+     * @param numPositions - number of positions
+     * @param numChannels - number of channels
+     * @param numSlices - number of slices
+     * @param numFrames - number of frames
+     * @return Dataset object
+     */
     public static Dataset create(String label, int numPositions, int numChannels, int numSlices, int numFrames) {
         Dataset ds = new Dataset();
         ds.name = label;
@@ -53,22 +77,118 @@ public class Dataset {
         ds.numChannels = numChannels;
         ds.numSlices = numSlices;
         ds.numFrames = numFrames;
-        ds.summaryMeta = new JSONObject();
 
         return ds;
     }
 
+    /**
+     * Changes the name of the dataset. This works only on in-memory datasets.
+     * @param newName
+     * @throws DatasetException
+     */
     public void setName(String newName) throws DatasetException {
         if (!rootPath.isEmpty())
             throw new DatasetException("Can't change the name of dataset stored on disk.");
         name = newName;
     }
 
+    /**
+     * Returns dataset name
+     */
     public String getName() {
         return name;
     }
 
-    // factory method to load existing dataset from disk
+    /**
+     * Initializes the Dataset object.
+     * @param width - image width
+     * @param height - image height
+     * @param pixelType - pixel type string identifier
+     * @param bitDepth - bit depth of each pixel
+     * @param numberOfComponents - number of image components (1 for grayscale, 4 for RGBA)
+     * @param meta - custom metadata which will be added to auto-generated metadata
+     * @throws DatasetException
+     */
+    public void initialize(int width, int height, String pixelType, int bitDepth, int numberOfComponents, JSONObject meta) throws DatasetException {
+        this.width = width;
+        this.height = height;
+        this.pixelType = pixelType;
+        this.bitDepth = bitDepth;
+        this.numComponents = numberOfComponents;
+
+        // create default structure
+        // ------------------------
+
+        // channels
+        channelData = new ChannelData[numChannels];
+        for (int i=0; i<channelData.length; i++)
+            channelData[i] = new ChannelData(String.format("Channel-%d", i), Color.gray.getRGB());
+
+        // positions
+        positionNames = new String[numPositions];
+        for (int i=0; i<positionNames.length; i++) {
+            String fmt = "Pos_%" + (int) (Math.log10(positionNames.length) + 1) + "d";
+            positionNames[i] = String.format(fmt, i);
+        }
+
+        // image metadata
+        for (int p=0; p<numPositions; p++) {
+            for (int c=0; c<numChannels; c++) {
+                for (int s=0; s<numSlices; s++) {
+                    for (int f=0; f<numFrames; f++) {
+                        JSONObject imgMeta = generateImageMetadata(p, c, s, f);
+                        imageMap.put(getFrameKey(p, c, s, f, 4), new G2SImage(p, null, imgMeta));
+                    }
+                }
+            }
+        }
+
+        // summary metadata is generated at this time and can't be changed later
+        summaryMeta = meta; // start with custom metadata
+        summaryMeta.put(SummaryMeta.PREFIX, name);
+        summaryMeta.put(SummaryMeta.SOURCE, SOURCE_MODULE);
+        summaryMeta.put(SummaryMeta.WIDTH, width);
+        summaryMeta.put(SummaryMeta.HEIGHT, height);
+        summaryMeta.put(SummaryMeta.PIXEL_TYPE, pixelType);
+        summaryMeta.put(SummaryMeta.PIXEL_SIZE, pixelSizeUm);
+        summaryMeta.put(SummaryMeta.BIT_DEPTH, bitDepth);
+        summaryMeta.put(SummaryMeta.PIXEL_ASPECT, 1);
+        summaryMeta.put(SummaryMeta.POSITIONS, numPositions);
+        summaryMeta.put(SummaryMeta.CHANNELS, numChannels);
+        JSONArray chNames = new JSONArray();
+        JSONArray chColors = new JSONArray();
+        for (int i=0; i<numChannels; i++) {
+            chNames.put(channelData[i].name);
+            chColors.put(channelData[i].color);
+        }
+        summaryMeta.put(SummaryMeta.CHANNEL_NAMES, chNames);
+        summaryMeta.put(SummaryMeta.CHANNEL_COLORS, chColors);
+        summaryMeta.put(SummaryMeta.SLICES, numSlices);
+        summaryMeta.put(SummaryMeta.FRAMES, numFrames);
+        summaryMeta.put(SummaryMeta.TIME_FIRST, true);
+        summaryMeta.put(SummaryMeta.SLICES_FIRST, false);
+        summaryMeta.put(SummaryMeta.NUMBER_OF_COMPONENTS, numComponents);
+        summaryMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
+        summaryMeta.put(SummaryMeta.VERSION, METADATA_VERSION);
+        summaryMeta.put(SummaryMeta.TIME, new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()));
+        String hostName = "unknown";
+        try {
+            summaryMeta.put(SummaryMeta.COMPUTER_NAME, InetAddress.getLocalHost().getHostName());
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+        summaryMeta.put(SummaryMeta.USER_NAME, System.getProperty("user.name"));
+    }
+
+
+    /**
+     * Loads dataset from disk path. Dataset name will be the name of the root directory.
+     * @param path - path to the root directory of the dataset.
+     * @param loadPix - if true, pixel data will be automatically loaded to memory
+     * @return - dataset object
+     * @throws DatasetException
+     * @throws FileNotFoundException
+     */
     public static Dataset loadFromPath(String path, boolean loadPix) throws DatasetException, FileNotFoundException {
         Dataset ds = new Dataset();
         File rootDir = new File(path);
@@ -171,7 +291,14 @@ public class Dataset {
         return ds;
     }
 
-    // save current state of the dataset to disk
+    /**
+     * Saves dataset to disk. It works with incomplete datasets and can be called
+     * multiple times during the lifetime of the dataset object.
+     *
+     * @param unloadImages - pixel data will be purged from memory upon save
+     * @throws DatasetException
+     * @throws IOException
+     */
     public void save(boolean unloadImages) throws DatasetException, IOException {
         if (rootPath.length() == 0)
             throw new DatasetException("Root path is not defined. This is in-memory data set.");
@@ -214,7 +341,7 @@ public class Dataset {
      * Save in-memory data set to directory.
      * @param parentDir - path to the data set
      * @param unloadImages - release memory for image pixels after saving
-     * @param overwrite - overwrite existing data sets
+     * @param overwrite - overwrite existing data sets (USE WITH CAUTION)
      * @throws DatasetException
      * @throws IOException
      */
@@ -238,119 +365,11 @@ public class Dataset {
         save(unloadImages);
     }
 
-    private JSONObject generateMetadata(int p) throws DatasetException {
-        JSONObject md = new JSONObject();
-        md.put(KEY_SUMMARY, summaryMeta);
-        if (anyImagesOnPosition(p)) {
-            for (int c = 0; c < numChannels; c++) {
-                for (int s = 0; s < numSlices; s++) {
-                    for (int f = 0; f < numFrames; f++) {
-                        String fk = getFrameKey(p, c, s, f, 4);
-                        G2SImage img = imageMap.get(fk);
-                        md.put(fk, img.getMetadata());
-                    }
-                }
-            }
-        }
-        return md;
-    }
-
-    private JSONObject generateImageMetadata(int p, int c, int s, int f) {
-        JSONObject imgMeta = new JSONObject();
-        imgMeta.put(ImageMeta.WIDTH, width);
-        imgMeta.put(ImageMeta.HEIGHT, height);
-        imgMeta.put(ImageMeta.CHANNEL_INDEX, c);
-        imgMeta.put(ImageMeta.POS_INDEX, p);
-        imgMeta.put(ImageMeta.SLICE_INDEX, s);
-        imgMeta.put(ImageMeta.SLICE, s);
-        imgMeta.put(ImageMeta.FRAME_INDEX, f);
-        imgMeta.put(ImageMeta.FRAME, f);
-        imgMeta.put(ImageMeta.CHANNEL_NAME, channelData[c].name);
-        imgMeta.put(SummaryMeta.BIT_DEPTH, bitDepth);
-        imgMeta.put(SummaryMeta.PIXEL_TYPE, pixelType);
-        imgMeta.put(SummaryMeta.PIXEL_SIZE, pixelSizeUm);
-        imgMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
-        imgMeta.put(ImageMeta.FILE_NAME, getFileName(f, channelData[c].name, s));
-        imgMeta.put(ImageMeta.POS_NAME, positionNames[p]);
-        return imgMeta;
-    }
-
-    public void initialize(int width, int height, String pixelType, int bitDepth, int numberOfComponents, JSONObject meta) throws DatasetException {
-        this.width = width;
-        this.height = height;
-        this.pixelType = pixelType;
-        this.bitDepth = bitDepth;
-        this.numComponents = numberOfComponents;
-
-        // create default structure
-        // ------------------------
-
-        // channels
-        channelData = new ChannelData[numChannels];
-        for (int i=0; i<channelData.length; i++)
-            channelData[i] = new ChannelData(String.format("Channel-%d", i), Color.gray.getRGB());
-
-        // positions
-        positionNames = new String[numPositions];
-        for (int i=0; i<positionNames.length; i++) {
-            String fmt = "Pos_%" + (int) (Math.log10(positionNames.length) + 1) + "d";
-            positionNames[i] = String.format(fmt, i);
-        }
-
-        // image metadata
-        for (int p=0; p<numPositions; p++) {
-            for (int c=0; c<numChannels; c++) {
-                for (int s=0; s<numSlices; s++) {
-                    for (int f=0; f<numFrames; f++) {
-                        JSONObject imgMeta = generateImageMetadata(p, c, s, f);
-                        imageMap.put(getFrameKey(p, c, s, f, 4), new G2SImage(p, null, imgMeta));
-                    }
-                }
-            }
-        }
-
-        // summary metadata is generated at this time and can't be changed later
-        summaryMeta = meta; // start with custom metadata
-        summaryMeta.put(SummaryMeta.PREFIX, name);
-        summaryMeta.put(SummaryMeta.SOURCE, SOURCE_MODULE);
-        summaryMeta.put(SummaryMeta.WIDTH, width);
-        summaryMeta.put(SummaryMeta.HEIGHT, height);
-        summaryMeta.put(SummaryMeta.PIXEL_TYPE, pixelType);
-        summaryMeta.put(SummaryMeta.PIXEL_SIZE, pixelSizeUm);
-        summaryMeta.put(SummaryMeta.BIT_DEPTH, bitDepth);
-        summaryMeta.put(SummaryMeta.PIXEL_ASPECT, 1);
-        summaryMeta.put(SummaryMeta.POSITIONS, numPositions);
-        summaryMeta.put(SummaryMeta.CHANNELS, numChannels);
-        JSONArray chNames = new JSONArray();
-        JSONArray chColors = new JSONArray();
-        for (int i=0; i<numChannels; i++) {
-            chNames.put(channelData[i].name);
-            chColors.put(channelData[i].color);
-        }
-        summaryMeta.put(SummaryMeta.CHANNEL_NAMES, chNames);
-        summaryMeta.put(SummaryMeta.CHANNEL_COLORS, chColors);
-        summaryMeta.put(SummaryMeta.SLICES, numSlices);
-        summaryMeta.put(SummaryMeta.FRAMES, numFrames);
-        summaryMeta.put(SummaryMeta.TIME_FIRST, true);
-        summaryMeta.put(SummaryMeta.SLICES_FIRST, false);
-        summaryMeta.put(SummaryMeta.NUMBER_OF_COMPONENTS, numComponents);
-        summaryMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
-        summaryMeta.put(SummaryMeta.VERSION, 9);
-        summaryMeta.put(SummaryMeta.TIME, new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()));
-        String hostName = "unknown";
-        try {
-            summaryMeta.put(SummaryMeta.COMPUTER_NAME, InetAddress.getLocalHost().getHostName());
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
-        summaryMeta.put(SummaryMeta.USER_NAME, System.getProperty("user.name"));
-    }
-
-    public void close() throws DatasetException, IOException {
-        if (rootPath.length() > 0)
-            save(false);
-    }
-
+    /**
+     * Sets pixel size in microns
+     * @param pixSizeUm
+     * @throws DatasetException
+     */
     public void setPixelSize(double pixSizeUm) throws DatasetException {
         for (int i=0; i<numPositions; i++) {
             if (anyImagesOnPosition(i))
@@ -360,6 +379,11 @@ public class Dataset {
         summaryMeta.put(SummaryMeta.PIXEL_SIZE, pixSizeUm);
     }
 
+    /**
+     * Sets channel names and colors
+     * @param channels
+     * @throws DatasetException
+     */
     public void setChannelData(ChannelData[] channels) throws DatasetException {
         for (int i = 0; i < numPositions; i++) {
             if (anyImagesOnPosition(i))
@@ -398,6 +422,16 @@ public class Dataset {
         updateImageMetadata(pos, ImageMeta.POS_NAME, name);
     }
 
+    /**
+     * Adds new image to the dataset.
+     * @param pixels - pixel array
+     * @param position - position index
+     * @param channel - channel index
+     * @param slice - slice index
+     * @param frame - frame index
+     * @param imageMeta - custom image metadata that will be added to auto-generated metadata
+     * @throws DatasetException
+     */
     public void addImage(Object pixels, int position, int channel, int slice, int frame, JSONObject imageMeta) throws DatasetException {
         G2SImage img = imageMap.get(getFrameKey(position, channel, slice, frame, 4));
         img.setPixels(pixels);
@@ -428,6 +462,115 @@ public class Dataset {
         }
         return pixels;
     }
+
+    /**
+     * Tells us whether the pixels are available for the current image.
+     * There are two reasons why they might not be available:
+     * 1. image has not been acquired yet, i.e. we are dealing with an incomplete data set
+     * 2. image has been acquired, but the pixels are not retained in memory - only on disk
+     * If we go ahead and call getImagePixels() when pixels are not available,
+     * in case of 1, we will get an empty (black) image, while in case of 2. the image will
+     * be automatically pulled from disk
+     * @param position
+     * @param channel
+     * @param slice
+     * @param frame
+     * @return - true if image pixels are in memory
+     * @throws DatasetException
+     */
+    public boolean hasImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
+        return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).hasPixels();
+    }
+
+    /**
+     * Tells us whether the image is actually acquired
+     * @param position
+     * @param channel
+     * @param slice
+     * @param frame
+     * @return - true if image is acquired
+     * @throws DatasetException
+     */
+    public boolean isImageAcquired(int position, int channel, int slice, int frame) throws DatasetException {
+        return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).isAcquired();
+    }
+
+    /**
+     * Returns image metdata
+     * @param position
+     * @param channel
+     * @param slice
+     * @param frame
+     * @return JSONObject with metdata
+     * @throws DatasetException
+     */
+    public JSONObject getImageMetadata(int position, int channel, int slice, int frame) throws DatasetException {
+        return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).getMetadata();
+    }
+
+    /**
+     * Returns summary metadata for the dataset
+     * @return JSONObject with metadata
+     */
+    public JSONObject getSummaryMetadata() {
+        return summaryMeta;
+    }
+
+    /**
+     * Sets comment text
+     * @param text
+     */
+    public void setComment(String text) {
+        comment = text;
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // PRIVATE METHODS
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * Automatically generates metadata from current dataset properties
+     * @param p - position index
+     * @return - metadata as JSONObject
+     * @throws DatasetException
+     */
+    private JSONObject generateMetadata(int p) throws DatasetException {
+        JSONObject md = new JSONObject();
+        md.put(KEY_SUMMARY, summaryMeta);
+        if (anyImagesOnPosition(p)) {
+            for (int c = 0; c < numChannels; c++) {
+                for (int s = 0; s < numSlices; s++) {
+                    for (int f = 0; f < numFrames; f++) {
+                        String fk = getFrameKey(p, c, s, f, 4);
+                        G2SImage img = imageMap.get(fk);
+                        md.put(fk, img.getMetadata());
+                    }
+                }
+            }
+        }
+        return md;
+    }
+
+    private JSONObject generateImageMetadata(int p, int c, int s, int f) {
+        JSONObject imgMeta = new JSONObject();
+        imgMeta.put(ImageMeta.WIDTH, width);
+        imgMeta.put(ImageMeta.HEIGHT, height);
+        imgMeta.put(ImageMeta.CHANNEL_INDEX, c);
+        imgMeta.put(ImageMeta.POS_INDEX, p);
+        imgMeta.put(ImageMeta.SLICE_INDEX, s);
+        imgMeta.put(ImageMeta.SLICE, s);
+        imgMeta.put(ImageMeta.FRAME_INDEX, f);
+        imgMeta.put(ImageMeta.FRAME, f);
+        imgMeta.put(ImageMeta.CHANNEL_NAME, channelData[c].name);
+        imgMeta.put(SummaryMeta.BIT_DEPTH, bitDepth);
+        imgMeta.put(SummaryMeta.PIXEL_TYPE, pixelType);
+        imgMeta.put(SummaryMeta.PIXEL_SIZE, pixelSizeUm);
+        imgMeta.put(SummaryMeta.UUID, UUID.randomUUID().toString());
+        imgMeta.put(ImageMeta.FILE_NAME, getFileName(f, channelData[c].name, s));
+        imgMeta.put(ImageMeta.POS_NAME, positionNames[p]);
+        return imgMeta;
+    }
+
 
     private Object loadImagePixels(String imagePath) throws DatasetException {
         ImagePlus ip = new ImagePlus(imagePath);
@@ -467,26 +610,6 @@ public class Dataset {
         if (!saver.saveAsTiff(imagePath))
             throw new DatasetException("Unable to save file: " + imagePath);
 
-    }
-
-    public boolean hasImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
-        return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).hasPixels();
-    }
-
-    public JSONObject getImageMetadata(int position, int channel, int slice, int frame) throws DatasetException {
-        return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).getMetadata();
-    }
-
-    public JSONObject getSummaryMetadata() {
-        return summaryMeta;
-    }
-
-    public void setComment(String text) {
-        comment = text;
-    }
-
-    public int getWidth() {
-        return width;
     }
 
     private static String getFrameKey(int pos, int ch, int slice, int frame, int dims) throws DatasetException {
