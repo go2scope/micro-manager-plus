@@ -10,7 +10,7 @@
  * @version 2.0
  * @since 2014-03-01
  */
-package go2scope.dataset;
+package com.go2scope.dataset;
 
 import ij.ImagePlus;
 import ij.io.FileSaver;
