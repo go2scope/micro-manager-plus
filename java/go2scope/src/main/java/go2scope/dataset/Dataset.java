@@ -48,6 +48,7 @@ public class Dataset {
     private String comment = "";
     private JSONObject summaryMeta = new JSONObject();
     private HashMap<String, G2SImage> imageMap = new HashMap<>();
+    private Thread saveThread = null;
 
     private int bitDepth = 0;
     private String pixelType = Values.PIX_TYPE_NONE;
@@ -299,7 +300,7 @@ public class Dataset {
      * @throws DatasetException
      * @throws IOException
      */
-    public void save(boolean unloadImages) throws DatasetException, IOException {
+    public synchronized void save(boolean unloadImages) throws DatasetException, IOException {
         if (rootPath.length() == 0)
             throw new DatasetException("Root path is not defined. This is in-memory data set.");
 
@@ -309,14 +310,8 @@ public class Dataset {
                 if (!posDir.exists()) {
                     if (!posDir.mkdir())
                         throw new DatasetException("Unable to create directory: " + posDir.getAbsolutePath());
-
-                    // create metadata file for this position
-                    JSONObject md = generateMetadata(p);
-                    FileWriter writer = new FileWriter(new File(posDir.getAbsolutePath() + "/" + METADATA_FILE_NAME));
-                    writer.write(md.toString(3));
-                    writer.flush();
-                    writer.close();
                 }
+                generateAndSaveMetadataFile(p, posDir);
 
                 // save all unsaved images on this position
                 for (int c = 0; c < numChannels; c++) {
@@ -334,6 +329,34 @@ public class Dataset {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Save dataset (may be incomplete) asynchronously in a separate thread.
+     * @param unloadImages - whether to remove pixels from memory after save to file
+     * @throws InterruptedException
+     */
+    public void saveAsync(boolean unloadImages) throws InterruptedException {
+        waitForSaveToFinish();
+        saveThread = new Thread(() -> {
+            try {
+                Dataset.this.save(unloadImages);
+            } catch (DatasetException | IOException e) {
+                e.printStackTrace();
+            }
+        });
+        saveThread.start();
+    }
+
+    /**
+     * Wait for current save thread to exit
+     * @throws InterruptedException
+     */
+    public void waitForSaveToFinish() throws InterruptedException {
+        // if the thread is still running wait until it completes
+        if (saveThread != null && saveThread.isAlive()) {
+            saveThread.join();
         }
     }
 
@@ -413,7 +436,7 @@ public class Dataset {
      * @param pos - position index
      * @throws DatasetException
      */
-    public void setPositionName(String name, int pos) throws DatasetException {
+    public synchronized void setPositionName(String name, int pos) throws DatasetException {
         if (pos < 0 || pos > numPositions)
             throw new DatasetException("Invalid position coordinate");
         if (anyImagesOnPosition(pos))
@@ -432,7 +455,7 @@ public class Dataset {
      * @param imageMeta - custom image metadata that will be added to auto-generated metadata
      * @throws DatasetException
      */
-    public void addImage(Object pixels, int position, int channel, int slice, int frame, JSONObject imageMeta) throws DatasetException {
+    public synchronized void addImage(Object pixels, int position, int channel, int slice, int frame, JSONObject imageMeta) throws DatasetException {
         G2SImage img = imageMap.get(getFrameKey(position, channel, slice, frame, 4));
         img.setPixels(pixels);
         img.addMeta(imageMeta);
@@ -449,7 +472,7 @@ public class Dataset {
      * @return
      * @throws DatasetException
      */
-    public Object getImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
+    public synchronized Object getImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
         G2SImage img = imageMap.get(getFrameKey(position, channel, slice, frame, 4));
         Object pixels = img.getPixels();
         if (img.getPixels() == null) {
@@ -478,7 +501,7 @@ public class Dataset {
      * @return - true if image pixels are in memory
      * @throws DatasetException
      */
-    public boolean hasImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
+    public synchronized boolean hasImagePixels(int position, int channel, int slice, int frame) throws DatasetException {
         return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).hasPixels();
     }
 
@@ -491,7 +514,7 @@ public class Dataset {
      * @return - true if image is acquired
      * @throws DatasetException
      */
-    public boolean isImageAcquired(int position, int channel, int slice, int frame) throws DatasetException {
+    public synchronized boolean isImageAcquired(int position, int channel, int slice, int frame) throws DatasetException {
         return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).isAcquired();
     }
 
@@ -504,7 +527,7 @@ public class Dataset {
      * @return JSONObject with metdata
      * @throws DatasetException
      */
-    public JSONObject getImageMetadata(int position, int channel, int slice, int frame) throws DatasetException {
+    public synchronized JSONObject getImageMetadata(int position, int channel, int slice, int frame) throws DatasetException {
         return imageMap.get(getFrameKey(position, channel, slice, frame, 4)).getMetadata();
     }
 
@@ -677,5 +700,19 @@ public class Dataset {
         }
     }
 
-
+    /**
+     * Re-generates metadata based on the current content and saves the metadata file
+     * @param p - position index
+     * @param posDir
+     * @throws DatasetException
+     * @throws IOException
+     */
+    private void generateAndSaveMetadataFile(int p, File posDir) throws DatasetException, IOException {
+        // create metadata file for this position
+        JSONObject md = generateMetadata(p);
+        FileWriter writer = new FileWriter(new File(posDir.getAbsolutePath() + "/" + METADATA_FILE_NAME));
+        writer.write(md.toString(3));
+        writer.flush();
+        writer.close();
+    }
 }

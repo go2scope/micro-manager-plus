@@ -13,3 +13,5 @@ python/go2scope/dist/
 python/go2scope/build/
 python/go2scope/go2scope.egg-info/
 python/go2scope/venv-dist/
+
+*.class
