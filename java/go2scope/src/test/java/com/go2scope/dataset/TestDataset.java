@@ -10,8 +10,7 @@
  * @version 2.0
  * @since 2014-03-01
  */
-import com.go2scope.dataset.*;
-import go2scope.dataset.*;
+package com.go2scope.dataset;
 import org.json.JSONObject;
 
 import java.io.IOException;
