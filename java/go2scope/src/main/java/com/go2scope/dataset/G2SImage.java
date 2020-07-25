@@ -10,7 +10,10 @@
  * @since 2014-03-01
  */
 package com.go2scope.dataset;
+import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.Iterator;
 
 class G2SImage {
     private Object pixels = null;
@@ -33,9 +36,17 @@ class G2SImage {
             acquired = true;
     }
 
-    public void addMeta(JSONObject m) {
-        for (String key : m.keySet()) {
-            meta.put(key, m.get(key));
+    /**
+     * Add metadata to the image
+     * Duplicate tags will not overwrite existing ones
+     * @param m
+     * @throws JSONException
+     */
+    public void addMeta(JSONObject m) throws JSONException {
+        for (Iterator<String> it = m.keys(); it.hasNext(); ) {
+            String key = it.next();
+            if (!meta.has(key))
+                meta.put(key, m.get(key));
         }
     }
 
