@@ -14,7 +14,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     url="https://github.com/go2scope/micro-manager-plus/tree/master/python/go2scope",
     install_requires=[
-        'numpy==1.18.2', 'opencv-python==4.2.0.34',
+        'numpy==1.22.0', 'opencv-python==4.2.0.34',
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
